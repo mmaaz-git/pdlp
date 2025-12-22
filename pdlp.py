@@ -42,6 +42,7 @@ def solve(
     device = c.device
     dtype = c.dtype
     eps_zero = 1e-12
+    eps_bound = 1e9
 
     m1, n = G.shape
     m2 = A.shape[0]
@@ -84,13 +85,75 @@ def solve(
             return w_new.clamp_min(eps_zero)
         return w_old
 
-    def get_restart_candidate(
-        x_cur: torch.Tensor, y_cur: torch.Tensor,
-        x_avg: torch.Tensor, y_avg: torch.Tensor,
-    ):
-        # simplest valid: restart from averaged iterate
-        # TODO
-        return x_avg, y_avg
+    @torch.no_grad()
+    def compute_lambda_for_box(x, g):
+        """
+        g = c - K^T y.
+        λ is the normal-cone component for box constraints at x.
+        """
+        lam = torch.zeros_like(x)
+
+        fin_l = torch.isfinite(l)
+        fin_u = torch.isfinite(u)
+
+        at_l = fin_l & (x <= l + eps_bound)
+        at_u = fin_u & (x >= u - eps_bound)
+
+        # handle numerically-tight boxes where both flags fire
+        both = at_l & at_u
+        if both.any():
+            dl = (x - l).abs()
+            du = (u - x).abs()
+            at_l = (at_l & ~both) | (both & (dl <= du))
+            at_u = (at_u & ~both) | (both & (du < dl))
+
+        lam[at_l] = torch.clamp(g[at_l], min=0.0)  # λ^+ at lower bound
+        lam[at_u] = torch.clamp(g[at_u], max=0.0)  # λ^- (negative) at upper bound
+        return lam
+
+    @torch.no_grad()
+    def kkt_error_sq(x, y, w):
+        """
+        Eq (5): KKT_ω(z)^2
+        with z=(x,y), ω=w.
+        """
+        w = torch.as_tensor(w, device=x.device, dtype=x.dtype).clamp_min(eps_zero)
+
+        # primal residuals
+        r_eq = b - (A @ x)
+        r_ineq = torch.clamp(h - (G @ x), min=0.0)
+        term1 = (w**2) * (r_eq @ r_eq + r_ineq @ r_ineq)
+
+        # stationarity residual + box multipliers
+        g = c - (K.T @ y)
+        lam = compute_lambda_for_box(x, g)
+        rs = g - lam
+        term2 = (1.0 / (w**2)) * (rs @ rs)
+
+        # scalar gap-ish term
+        lam_pos = torch.clamp(lam, min=0.0)
+        lam_minus = torch.clamp(-lam, min=0.0)
+
+        fin_l = torch.isfinite(l)
+        fin_u = torch.isfinite(u)
+
+        l_term = (l[fin_l] * lam_pos[fin_l]).sum()
+        u_term = (u[fin_u] * lam_minus[fin_u]).sum()
+
+        scalar = (q @ y) + l_term - u_term - (c @ x)
+        term3 = scalar * scalar
+
+        return term1 + term2 + term3
+
+    @torch.no_grad()
+    def get_restart_candidate(x, y, x_bar, y_bar, w):
+        """
+        z_c := z if KKT(z) < KKT(z_bar) else z_bar.
+        (Compare squared KKT; same ordering.)
+        """
+        kkt_z = kkt_error_sq(x, y, w)
+        kkt_b = kkt_error_sq(x_bar, y_bar, w)
+        return (x, y) if (kkt_z < kkt_b) else (x_bar, y_bar)
 
     def should_restart(
         x_cur: torch.Tensor, y_cur: torch.Tensor,
@@ -117,11 +180,13 @@ def solve(
         """
         One PDHG step
         """
-        eta = eta_hat
+        eta = torch.as_tensor(eta_hat, device=x.device, dtype=x.dtype).clamp_min(eps_zero)
 
-        kp1 = k + 1
-        fac1 = 1.0 - (kp1 ** -0.3)
+        kp1 = float(k + 1)
+        fac1 = 1.0 if k == 0 else 1.0 - (kp1 ** -0.3)
         fac2 = 1.0 + (kp1 ** -0.6)
+        fac1 = torch.tensor(fac1, device=x.device, dtype=x.dtype)
+        fac2 = torch.tensor(fac2, device=x.device, dtype=x.dtype)
 
         for _ in range(MAX_BACKTRACK):
             x_p = proj_X(x - (eta / w) * (c - (K.T @ y)))
@@ -129,19 +194,28 @@ def solve(
 
             dx = x_p - x
             dy = y_p - y
-            num = w * (dx @ dx) + (1.0 / w) * (dy @ dy)
-            denom = 2.0 * (dy @ (K @ dx))
-            eta_bar =  num / denom.clamp_min(eps_zero)
 
-            eta_p = min(fac1*eta_bar, fac2*eta)
+            dx2 = (dx * dx).sum()
+            dy2 = (dy * dy).sum()
+            num = w * dx2 + dy2 / w
 
-            if eta <= eta_bar:
+            Kdx = K @ dx
+            denom = 2.0 * (dy * Kdx).sum()
+
+            if denom <= eps_zero:
+                bar_eta = torch.tensor(float("inf"), device=dx.device, dtype=dx.dtype)
+            else:
+                bar_eta = num / denom
+
+            # eta' from paper
+            eta_p = torch.minimum(fac1 * bar_eta, fac2 * eta).clamp_min(eps_zero)
+
+            if eta <= bar_eta:
                 return x_p, y_p, eta, eta_p
 
             eta = eta_p
 
-        # if we run out of backtracking steps, return last proposal
-        return x_p, y_p, eta, eta_p
+        return x_p, y_p, eta, eta
 
 
     # -----------------------------
@@ -150,13 +224,8 @@ def solve(
 
     # Initializations
 
-    # safe average of l and u to initialize x
-    finite = torch.isfinite(l) & torch.isfinite(u)
-    x_mid = 0.5 * (l + u)
-    x0 = torch.where(finite, x_mid, proj_X(torch.zeros(n, device=device, dtype=dtype)))
-    x0 = proj_X(x0)
-
-    # trivially in Y
+    # Initialize to zeros
+    x0 = proj_X(torch.zeros(n, device=device, dtype=dtype))
     y0 = torch.zeros(m, device=device, dtype=dtype)
 
     # step size 1/||K||_inf
@@ -167,6 +236,16 @@ def solve(
 
     x, y = x0.clone(), y0.clone() # current iterate
     x_prev, y_prev = x.clone(), y.clone() # past iterate
+    kkt0 = kkt_error_sq(x0, y0, w)
+
+    # initialize candidate at t=0
+    x_c, y_c = x.clone(), y.clone()
+    kkt_c = kkt0
+
+    # Restart parameters (from cuPDLP.jl defaults)
+    beta_sufficient = 0.2   # Sufficient progress threshold
+    beta_necessary = 0.8    # Necessary progress threshold
+    beta_artificial = 0.36  # Artificial restart threshold
 
     k_global = 0 # global step counter
 
@@ -175,7 +254,7 @@ def solve(
         eta_sum = 0.0
         x_bar, y_bar = x.clone(), y.clone()
 
-        for n_inner in range(MAX_INNER_ITERS):
+        for t in range(MAX_INNER_ITERS):
             if termination_criteria(x, y, k_global):
                 return x, y
 
@@ -187,15 +266,36 @@ def solve(
             x_bar = x_bar + alpha * (x - x_bar)
             y_bar = y_bar + alpha * (y - y_bar)
 
-            # restart candidate
-            x_c, y_c = get_restart_candidate(x, y, x_bar, y_bar)
+            # choose restart candidate z_c^{n,t+1}
+            x_c_new, y_c_new = get_restart_candidate(x, y, x_bar, y_bar, w)
+            kkt_c_new = kkt_error_sq(x_c_new, y_c_new, w)
 
             k_global += 1
 
-            if should_restart(x, y, x_bar, y_bar, x_c, y_c, w, t, k_global):
+            # restart criteria (matching cuPDLP.jl logic)
+            cond_i  = (kkt_c_new <= (beta_sufficient**2) * kkt0)
+            cond_ii = (kkt_c_new <= (beta_necessary**2) * kkt0) and (kkt_c_new > kkt_c)
+            cond_iii = (t >= beta_artificial * k_global)
+
+            # if n_outer < 3 and (cond_i or cond_ii or cond_iii):
+            #     print(f"  Restart at n={n_outer}, t={t}: cond_i={cond_i}, cond_ii={cond_ii}, cond_iii={cond_iii}")
+            #     print(f"    kkt_c_new={kkt_c_new.item():.3e}, kkt0={kkt0.item():.3e}, kkt_c={kkt_c.item():.3e}")
+
+            if cond_i or cond_ii or cond_iii:
+                x_c, y_c = x_c_new, y_c_new
+                kkt_c = kkt_c_new
                 break
 
         # restart from candidate
+        # if n_outer < 3:  # Debug first few restarts
+        #     kkt_cur = kkt_error_sq(x, y, w)
+        #     kkt_avg = kkt_error_sq(x_bar, y_bar, w)
+        #     kkt_cand = kkt_error_sq(x_c, y_c, w)
+        #     print(f"Outer iter {n_outer}: KKT_cur={kkt_cur.item():.3e}, KKT_avg={kkt_avg.item():.3e}, KKT_cand={kkt_cand.item():.3e}")
+        #     print(f"  x={x}, y={y}")
+        #     print(f"  x_bar={x_bar}, y_bar={y_bar}")
+        #     print(f"  Restarting to: x={x_c}, y={y_c}")
+
         x, y = x_c, y_c
 
         # primal weight update
