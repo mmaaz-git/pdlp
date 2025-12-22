@@ -1,4 +1,5 @@
 import torch
+from preprocess import rescale_problem, unscale_solution
 
 """
 Consider the LP.
@@ -29,6 +30,9 @@ def solve(
     MAX_INNER_ITERS: int = 100,
     MAX_BACKTRACK: int = 50,
     theta: float = 0.5,
+    l_inf_ruiz_iterations: int = 10,  # Match cuPDLP.jl default
+    pock_chambolle_alpha: float = 1.0,  # Match cuPDLP.jl default
+    verbose: bool = False,
 ):
     # -----------------------------
     # Shape checks / setup
@@ -51,6 +55,30 @@ def solve(
     # Stack constraints
     K = torch.cat([G, A], dim=0) # (m, n)
     q = torch.cat([h, b], dim=0) # (m,)
+
+    # -----------------------------
+    # Rescaling / Preconditioning
+    # -----------------------------
+    # Apply Ruiz + Pock-Chambolle rescaling (matching cuPDLP.jl defaults)
+    K_scaled, c_scaled, q_scaled, l_scaled, u_scaled, constraint_rescaling, variable_rescaling = rescale_problem(
+        K, c, q, l, u,
+        l_inf_ruiz_iterations=l_inf_ruiz_iterations,
+        pock_chambolle_alpha=pock_chambolle_alpha,
+        verbose=verbose,
+    )
+
+    # Work with scaled problem from now on
+    K = K_scaled
+    c = c_scaled
+    q = q_scaled
+    l = l_scaled
+    u = u_scaled
+
+    # Update G, h, A, b to scaled versions (for KKT computation)
+    G = K[:m1, :]
+    h = q[:m1]
+    A = K[m1:, :] if m2 > 0 else A
+    b = q[m1:] if m2 > 0 else b
 
     # -----------------------------
     # Projections
@@ -167,7 +195,7 @@ def solve(
         return False
 
     def termination_criteria(x_cur: torch.Tensor, y_cur: torch.Tensor, w_cur: float, k: int,
-                            kkt_best: float, abs_tol: float = 0.1) -> bool:
+                            kkt_best: float, abs_tol: float = 1e-4) -> bool:
         """Check if converged or diverging."""
         if k < 10:  # Don't terminate too early
             return False
@@ -178,9 +206,9 @@ def solve(
         if kkt < abs_tol:
             return True
 
-        # Diverging: KKT is 10x worse than best seen
-        if kkt > 10.0 * kkt_best:
-            # print(f"Stopping due to divergence: KKT={kkt.item():.3e} > 10*best={kkt_best:.3e}")
+        # Diverging: KKT is 100x worse than best seen
+        if kkt > 100.0 * kkt_best:
+            print(f"Stopping due to divergence: KKT={kkt.item():.3e} > 10*best={kkt_best:.3e}")
             return True
 
         return False
@@ -211,12 +239,8 @@ def solve(
             dx = x_p - x
             dy = y_p - y
 
-            dx2 = (dx * dx).sum()
-            dy2 = (dy * dy).sum()
-            num = w * dx2 + dy2 / w
-
-            Kdx = K @ dx
-            denom = 2.0 * (dy * Kdx).sum()
+            num = w * (dx @ dx) + (dy @ dy) / w
+            denom = 2 * torch.abs(dy @ K @ dx)
 
             if denom <= eps_zero:
                 bar_eta = torch.tensor(float("inf"), device=dx.device, dtype=dx.dtype)
@@ -273,16 +297,26 @@ def solve(
         # Update best KKT
         kkt_best = min(kkt_best, kkt_last_restart.item())
 
-        # if n_outer % 10 == 0 or n_outer < 5:
-        #     print(f"Outer iter {n_outer}: x={x.numpy()}, KKT={kkt_last_restart.item():.3e}, best={kkt_best:.3e}, w={w:.3e}")
+        if verbose and (n_outer % 10 == 0 or n_outer < 5):
+            print(f"Outer iter {n_outer}: x={x.numpy()}, y={y.numpy()}, KKT={kkt_last_restart.item():.3e}, best={kkt_best:.3e}, w={w:.3e}")
 
         # Check for NaN/Inf
         if torch.isnan(x).any() or torch.isnan(y).any():
             print(f"NaN detected at outer iteration {n_outer}!")
-            return x, y
+            if verbose:
+                print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
+            x_orig, y_orig = unscale_solution(x, y, variable_rescaling, constraint_rescaling)
+            if verbose:
+                print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
+            return x_orig, y_orig
         if torch.isinf(x).any() or torch.isinf(y).any():
             print(f"Inf detected at outer iteration {n_outer}!")
-            return x, y
+            if verbose:
+                print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
+            x_orig, y_orig = unscale_solution(x, y, variable_rescaling, constraint_rescaling)
+            if verbose:
+                print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
+            return x_orig, y_orig
 
         # reset averaging at start of each outer loop
         eta_sum = 0.0
@@ -292,7 +326,12 @@ def solve(
         for t in range(MAX_INNER_ITERS):
             if termination_criteria(x, y, w, k_global, kkt_best):
                 # print(f"Terminated at iteration {k_global}")
-                return x, y
+                if verbose:
+                    print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
+                x_orig, y_orig = unscale_solution(x, y, variable_rescaling, constraint_rescaling)
+                if verbose:
+                    print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
+                return x_orig, y_orig
 
             x, y, eta_used, eta_hat = adaptive_step_pdhg(x, y, w, eta_hat, k_global)
 
@@ -330,4 +369,10 @@ def solve(
         # store previous restart start
         x_prev, y_prev = x.clone(), y.clone()
 
-    return x, y
+    # Unscale solution back to original space
+    if verbose:
+        print(f"\nSolution in scaled space: x={x.numpy()}, y={y.numpy()}")
+    x_orig, y_orig = unscale_solution(x, y, variable_rescaling, constraint_rescaling)
+    if verbose:
+        print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
+    return x_orig, y_orig
