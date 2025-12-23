@@ -251,30 +251,3 @@ def test_problem_6():
     print(f"  {'PASS' if error < 0.01 else 'FAIL'}")
 
     return error < 0.01
-
-
-if __name__ == "__main__":
-    print("\n" + "=" * 70)
-    print("PDLP SOLVER TEST SUITE")
-    print("=" * 70)
-
-    results = []
-    results.append(("Test 1: Simple 2D inequality", test_problem_1()))
-    results.append(("Test 2: Equality constraint", test_problem_2()))
-    results.append(("Test 3: 3D multiple inequalities", test_problem_3()))
-    results.append(("Test 4: Unbounded variable", test_problem_4()))
-    results.append(("Test 5: Tight bounds at optimal", test_problem_5()))
-    results.append(("Test 6: Mixed equality/inequality", test_problem_6()))
-
-    print("\n" + "=" * 70)
-    print("SUMMARY")
-    print("=" * 70)
-
-    for name, passed in results:
-        status = "✓ PASS" if passed else "✗ FAIL"
-        print(f"  {status}: {name}")
-
-    total = len(results)
-    passed = sum(1 for _, p in results if p)
-    print(f"\nTotal: {passed}/{total} tests passed")
-    print("=" * 70 + "\n")
