@@ -16,7 +16,7 @@ def solve(
     pock_chambolle_alpha: float = 1.0,
     eps_tol: float = 1e-8,
     verbose: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, str, dict]:
     """
     Solve a Linear Program using the Primal-Dual Hybrid Gradient (PDHG) algorithm.
 
@@ -46,6 +46,8 @@ def solve(
     Returns:
         x_sol: Primal solution (n,)
         y_sol: Dual solution (m1 + m2,) where y[:m1] are inequality duals, y[m1:] are equality duals
+        status: "optimal", "primal_infeasible", "dual_infeasible", or "max_iterations"
+        info: Dict with certificate details (ray, certificate_quality) if infeasible/unbounded, else empty
 
     Notes:
         - Internally stacks constraints as K = [G; A] and q = [h; b]
@@ -94,14 +96,14 @@ def solve(
                 print(f"  Problem: {m1} inequalities, {m2} equalities, {n} variables")
                 print(f"\n  Status: converged (trivial, no variables)")
                 print(f"  Primal objective: 0.000000e+00")
-            return torch.zeros(0, device=device, dtype=dtype), torch.zeros(m, device=device, dtype=dtype)
+            return torch.zeros(0, device=device, dtype=dtype), torch.zeros(m, device=device, dtype=dtype), "optimal", {}
         else:
             if verbose:
                 print("\nPDLP Solver")
                 print(f"  Problem: {m1} inequalities, {m2} equalities, {n} variables")
                 print(f"\n  Status: PRIMAL INFEASIBLE")
                 print(f"    No variables but constraints cannot be satisfied")
-            return torch.zeros(0, device=device, dtype=dtype), torch.zeros(m, device=device, dtype=dtype)
+            return torch.zeros(0, device=device, dtype=dtype), torch.zeros(m, device=device, dtype=dtype), "primal_infeasible", {}
 
     if m == 0:
         # No constraints means we just minimize c^T x subject to l <= x <= u
@@ -127,7 +129,7 @@ def solve(
                 print(f"  Problem: {m1} inequalities, {m2} equalities, {n} variables")
                 print(f"\n  Status: DUAL INFEASIBLE (primal unbounded)")
                 print(f"    No constraints and negative objective coefficient with unbounded variable")
-            return x_sol, torch.zeros(0, device=device, dtype=dtype)
+            return x_sol, torch.zeros(0, device=device, dtype=dtype), "dual_infeasible", {}
         else:
             if verbose:
                 print("\nPDLP Solver")
@@ -135,7 +137,7 @@ def solve(
                 obj = (c @ x_sol).item()
                 print(f"\n  Status: converged (trivial, no constraints)")
                 print(f"  Primal objective: {obj:.6e}")
-            return x_sol, torch.zeros(0, device=device, dtype=dtype)
+            return x_sol, torch.zeros(0, device=device, dtype=dtype), "optimal", {}
 
     # -----------------------------
     # Rescaling / Preconditioning
@@ -274,16 +276,39 @@ def solve(
         return term1 + term2 + term3
 
     @torch.no_grad()
-    def termination_criteria(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> bool:
-        """Check termination on original problem, not rescaled."""
+    def termination_criteria(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> tuple[bool, str, dict]:
+        """Check termination on original problem. Returns (converged, status, info)."""
         x_orig = x_scaled / variable_rescaling
         y_orig = y_scaled / constraint_rescaling
 
-        # compute gradient and lambda in original space
+        # Check for primal infeasibility (Farkas certificate via dual ray)
+        dual_norm_inf = torch.max(y_orig.abs())
+        if dual_norm_inf > eps_zero:
+            y_ray = y_orig / dual_norm_inf
+            dual_ray_obj = (q_orig @ y_ray).item()
+            if dual_ray_obj > 0:
+                dual_residual = torch.linalg.norm(K_orig.T @ y_ray, ord=float('inf')).item()
+                relative_infeas = dual_residual / dual_ray_obj
+                if relative_infeas < eps_tol * 100:
+                    return False, "primal_infeasible", {"ray": y_ray, "certificate_quality": relative_infeas}
+
+        # Check for dual infeasibility (primal unbounded via primal ray)
+        primal_norm_inf = torch.max(x_orig.abs())
+        if primal_norm_inf > eps_zero:
+            x_ray = x_orig / primal_norm_inf
+            primal_ray_obj = (c_orig @ x_ray).item()
+            if primal_ray_obj < 0:
+                primal_residual_eq = torch.linalg.norm(A_orig @ x_ray, ord=float('inf')).item() if A_orig.shape[0] > 0 else 0.0
+                primal_residual_ineq = torch.linalg.norm(torch.clamp(-(G_orig @ x_ray), min=0.0), ord=float('inf')).item() if G_orig.shape[0] > 0 else 0.0
+                max_primal_residual = max(primal_residual_eq, primal_residual_ineq)
+                relative_infeas = max_primal_residual / (-primal_ray_obj)
+                if relative_infeas < eps_tol * 100:
+                    return False, "dual_infeasible", {"ray": x_ray, "certificate_quality": relative_infeas}
+
+        # Check for optimality
         g_orig = c_orig - (K_orig.T @ y_orig)
         lam = compute_lambda_for_box(x_orig, g_orig, l_orig, u_orig)
 
-        # split lambda into + and -
         lam_pos = torch.clamp(lam, min=0.0)
         lam_minus = torch.clamp(-lam, min=0.0)
 
@@ -295,22 +320,20 @@ def solve(
         qTy = (q_orig @ y_orig)
         cTx = (c_orig @ x_orig)
 
-        # condition (1) primal gap
         gap_num = torch.abs(qTy + l_term - u_term - cTx)
         gap_den = 1.0 + torch.abs(qTy + l_term - u_term) + torch.abs(cTx)
         gap_ok = (gap_num / gap_den) <= eps_tol
 
-        # condition (2) primal feasibility
         r_eq = b_orig - (A_orig @ x_orig)
         r_ineq = torch.clamp(h_orig - (G_orig @ x_orig), min=0.0)
         feas = torch.sqrt((r_eq @ r_eq) + (r_ineq @ r_ineq))
         feas_ok = feas <= eps_tol * (1.0 + torch.linalg.norm(q_orig))
 
-        # condition (3) stationarity
         stat = torch.linalg.norm(g_orig - lam)
         stat_ok = stat <= eps_tol * (1.0 + torch.linalg.norm(c_orig))
 
-        return bool(gap_ok and feas_ok and stat_ok)
+        optimal = bool(gap_ok and feas_ok and stat_ok)
+        return optimal, "optimal" if optimal else "", {}
 
     @torch.no_grad()
     def adaptive_step_pdhg(
@@ -381,26 +404,18 @@ def solve(
 
     k_global = 0 # global step counter
     converged = False
-    x_last_valid, y_last_valid = x.clone(), y.clone()  # Save last valid iterates
-    x_unscaled_last, y_unscaled_last = x / variable_rescaling, y / constraint_rescaling  # For infeasibility detection
+    status = ""
+    info = {}
+    x_unscaled_last, y_unscaled_last = x / variable_rescaling, y / constraint_rescaling
 
     for n_outer in range(MAX_OUTER_ITERS):
-        # Check for NaN/Inf early
-        if torch.isnan(x).any() or torch.isnan(y).any() or torch.isinf(x).any() or torch.isinf(y).any():
-            if verbose:
-                print(f"  NaN/Inf detected at outer iteration {n_outer}, checking for infeasibility...")
-            # Use last valid iterates
-            x, y = x_last_valid, y_last_valid
-            break
-
         # compute KKT of last restart point with current primal weight
         kkt_last_restart = kkt_error_sq(x, y, w)
 
-        # Save unscaled values for infeasibility detection (do this every iteration, not just for printing)
+        # Save unscaled values for final return
         x_unscaled = x / variable_rescaling
         y_unscaled = y / constraint_rescaling
-        if not (torch.isnan(x_unscaled).any() or torch.isnan(y_unscaled).any() or torch.isinf(x_unscaled).any() or torch.isinf(y_unscaled).any()):
-            x_unscaled_last, y_unscaled_last = x_unscaled.clone(), y_unscaled.clone()
+        x_unscaled_last, y_unscaled_last = x_unscaled.clone(), y_unscaled.clone()
 
         if verbose and n_outer % 10 == 0:
             primal_obj = (c_orig @ x_unscaled).item()
@@ -414,8 +429,8 @@ def solve(
         kkt_c_prev = kkt_last_restart # initialize for first iteration
 
         for t in range(MAX_INNER_ITERS):
-            if termination_criteria(x, y):
-                converged = True
+            converged, status, info = termination_criteria(x, y)
+            if converged or status:  # Converged or detected infeasibility/unboundedness
                 break
 
             x, y, eta_used, eta_hat = adaptive_step_pdhg(x, y, w, eta_hat, k_global)
@@ -450,9 +465,6 @@ def solve(
         # break out of outer loop if converged
         if converged: break
 
-        # Save last valid iterates BEFORE restart (x, y are restart points here)
-        x_last_valid, y_last_valid = x.clone(), y.clone()
-
         # restart from candidate
         x, y = x_c, y_c
 
@@ -462,63 +474,40 @@ def solve(
         # store previous restart start
         x_prev, y_prev = x.clone(), y.clone()
 
-    # Use last valid unscaled values (saved before NaN occurred)
+    # Use last saved unscaled values for return
     x_orig = x_unscaled_last
     y_orig = y_unscaled_last
 
-    # Check for infeasibility/unboundedness if not converged
-    status = "optimal" if converged else "max_iterations"
+    # Set status if not already set by termination_criteria
+    if not status:
+        status = "optimal" if converged else "max_iterations"
 
-    if not converged:
-        # Check for primal infeasibility (Farkas certificate via dual ray)
-        dual_norm_inf = torch.max(y_orig.abs())
-        if dual_norm_inf > eps_zero:
-            y_ray = y_orig / dual_norm_inf
+    # Print verbose output
+    if verbose:
+        if status == "primal_infeasible":
+            y_ray = info["ray"]
             dual_ray_obj = (q_orig @ y_ray).item()
+            dual_residual = torch.linalg.norm(K_orig.T @ y_ray, ord=float('inf')).item()
+            print(f"\n  Status: PRIMAL INFEASIBLE")
+            print(f"    Farkas certificate (dual ray): y = {y_ray}")
+            print(f"      K^T y ≈ 0:  ||K^T y|| = {dual_residual:.3e}")
+            print(f"      q^T y > 0:  q^T y = {dual_ray_obj:.3e}")
+            print(f"      Relative certificate quality: {info['certificate_quality']:.3e}")
+        elif status == "dual_infeasible":
+            x_ray = info["ray"]
+            primal_ray_obj = (c_orig @ x_ray).item()
+            primal_residual_eq = torch.linalg.norm(A_orig @ x_ray, ord=float('inf')).item() if A_orig.shape[0] > 0 else 0.0
+            primal_residual_ineq = torch.linalg.norm(torch.clamp(-(G_orig @ x_ray), min=0.0), ord=float('inf')).item() if G_orig.shape[0] > 0 else 0.0
+            max_primal_residual = max(primal_residual_eq, primal_residual_ineq)
+            print(f"\n  Status: DUAL INFEASIBLE (primal unbounded)")
+            print(f"    Unboundedness certificate (primal ray): x = {x_ray}")
+            print(f"      K x ≈ 0:  max_residual = {max_primal_residual:.3e}")
+            print(f"      c^T x < 0:  c^T x = {primal_ray_obj:.3e}")
+            print(f"      Relative certificate quality: {info['certificate_quality']:.3e}")
+        elif status in ["optimal", "max_iterations"]:
+            status_msg = "converged" if converged else f"max iterations ({MAX_OUTER_ITERS})"
+            print(f"\n  Status: {status_msg} after {k_global} total iterations")
+            print(f"  Primal objective: {(c_orig @ x_orig).item():.6e}")
+            print(f"  Dual objective: {(q_orig @ y_orig).item():.6e}")
 
-            if dual_ray_obj > 0:
-                # Check dual residual with objective = 0 (use infinity norm)
-                dual_residual = torch.linalg.norm(K_orig.T @ y_ray, ord=float('inf')).item()
-                relative_infeas = dual_residual / dual_ray_obj
-
-                # Use looser tolerance for infeasibility (algorithm has diverged, so certificate may not be fully refined)
-                if relative_infeas < eps_tol * 100:  # eps_primal_infeasible
-                    status = "primal_infeasible"
-                    if verbose:
-                        print(f"\n  Status: PRIMAL INFEASIBLE")
-                        print(f"    Farkas certificate (dual ray): y = {y_ray}")
-                        print(f"      K^T y ≈ 0:  ||K^T y|| = {dual_residual:.3e}")
-                        print(f"      q^T y > 0:  q^T y = {dual_ray_obj:.3e}")
-                        print(f"      Relative certificate quality: {relative_infeas:.3e}")
-
-        # Check for dual infeasibility (primal unbounded via primal ray)
-        if status == "max_iterations":
-            primal_norm_inf = torch.max(x_orig.abs())
-            if primal_norm_inf > eps_zero:
-                x_ray = x_orig / primal_norm_inf
-                primal_ray_obj = (c_orig @ x_ray).item()
-
-                if primal_ray_obj < 0:
-                    # Check primal residual with RHS = 0 (use infinity norm)
-                    primal_residual_eq = torch.linalg.norm(A_orig @ x_ray, ord=float('inf')).item() if A_orig.shape[0] > 0 else 0.0
-                    primal_residual_ineq = torch.linalg.norm(torch.clamp(-(G_orig @ x_ray), min=0.0), ord=float('inf')).item() if G_orig.shape[0] > 0 else 0.0
-                    max_primal_residual = max(primal_residual_eq, primal_residual_ineq)
-                    relative_infeas = max_primal_residual / (-primal_ray_obj)
-
-                    # Use looser tolerance for unboundedness (same reason as infeasibility)
-                    if relative_infeas < eps_tol * 100:  # eps_dual_infeasible
-                        status = "dual_infeasible"
-                        if verbose:
-                            print(f"\n  Status: DUAL INFEASIBLE (primal unbounded)")
-                            print(f"    Unboundedness certificate (primal ray): x = {x_ray}")
-                            print(f"      K x ≈ 0:  max_residual = {max_primal_residual:.3e}")
-                            print(f"      c^T x < 0:  c^T x = {primal_ray_obj:.3e}")
-                            print(f"      Relative certificate quality: {relative_infeas:.3e}")
-
-    if verbose and status in ["optimal", "max_iterations"]:
-        status_msg = "converged" if converged else f"max iterations ({MAX_OUTER_ITERS})"
-        print(f"\n  Status: {status_msg} after {k_global} total iterations")
-        print(f"  Primal objective: {(c_orig @ x_orig).item():.6e}")
-        print(f"  Dual objective: {(q_orig @ y_orig).item():.6e}")
-
-    return x_orig, y_orig
+    return x_orig, y_orig, status, info
