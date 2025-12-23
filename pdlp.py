@@ -118,7 +118,7 @@ def solve(
         variable_rescaling *= col_rescale
 
     if verbose:
-        print(f"Rescaling: Ruiz iters={l_inf_ruiz_iterations}, Pock-Chambolle alpha={pock_chambolle_alpha}")
+        print(f"Rescaling: Ruiz iters={ruiz_iterations}, Pock-Chambolle alpha={pock_chambolle_alpha}")
         print(f"  ||K|| after rescaling: {K.norm():.3e}")
 
     # split scaled K, q back into G, h, A, b (for algorithm)
@@ -128,6 +128,10 @@ def solve(
     # -----------------------------
     # Subprocedures
     # -----------------------------
+    def unscale_solution(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Unscale solution from scaled space back to original space."""
+        return x_scaled / variable_rescaling, y_scaled / constraint_rescaling
+
     def proj_X(x: torch.Tensor) -> torch.Tensor:
         """Project x onto box constraints [l, u]."""
         return torch.clamp(x, l, u)
@@ -150,8 +154,8 @@ def solve(
 
         if (dx > eps_zero) and (dy > eps_zero):
             ratio = (dy / dx).clamp_min(eps_zero)
-            w_new = torch.exp(primal_weight_update_smoothing * torch.log(ratio) +
-                            (1.0 - primal_weight_update_smoothing) * torch.log(w_old))
+            # exponential moving average: w_new = ratio^αlpha * w_old^(1-αlpha)
+            w_new = (ratio ** primal_weight_update_smoothing) * (w_old ** (1.0 - primal_weight_update_smoothing))
             return w_new.clamp_min(eps_zero)
         return w_old
 
@@ -173,8 +177,8 @@ def solve(
         # handle numerically-tight boxes where both flags fire
         both = at_l & at_u
         if both.any():
-            dl = (x - lower_bound).abs()
-            du = (upper_bound - x).abs()
+            dl = (x - lower).abs()
+            du = (upper - x).abs()
             at_l = (at_l & ~both) | (both & (dl <= du))
             at_u = (at_u & ~both) | (both & (du < dl))
 
@@ -216,15 +220,13 @@ def solve(
     @torch.no_grad()
     def termination_criteria(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> bool:
         """Check termination on original problem, not rescaled."""
-        # Unscale solution back to original space
-        x_orig = x_scaled / variable_rescaling
-        y_orig = y_scaled / constraint_rescaling
+        x_orig, y_orig = unscale_solution(x_scaled, y_scaled)
 
-        # Compute gradient and lambda in original space
+        # compute gradient and lambda in original space
         g_orig = c_orig - (K_orig.T @ y_orig)
         lam = compute_lambda_for_box(x_orig, g_orig, l_orig, u_orig)
 
-        # Split lambda into + and -
+        # split lambda into + and -
         lam_pos = torch.clamp(lam, min=0.0)
         lam_minus = torch.clamp(-lam, min=0.0)
 
@@ -261,7 +263,7 @@ def solve(
         eta_hat: torch.Tensor,
         k: int,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """One PDHG step"""
+        """One adaptive PDHG step"""
         eta = torch.as_tensor(eta_hat, device=x.device, dtype=x.dtype).clamp_min(eps_zero)
 
         kp1 = float(k + 1)
@@ -293,7 +295,6 @@ def solve(
 
         return x_p, y_p, eta, eta
 
-
     # -----------------------------
     # Main Algorithm
     # -----------------------------
@@ -316,10 +317,10 @@ def solve(
     # initialize candidate at t=0
     x_c, y_c = x.clone(), y.clone()
 
-    # Restart parameters (from cuPDLP.jl defaults)
-    beta_sufficient = 0.2   # Sufficient progress threshold
-    beta_necessary = 0.8    # Necessary progress threshold
-    beta_artificial = 0.36  # Artificial restart threshold
+    # restart parameters
+    beta_sufficient = 0.2 # used for sufficient progress condition
+    beta_necessary = 0.8 # used for necessary progress condition
+    beta_artificial = 0.36 # used for artifical restart condition
 
     k_global = 0 # global step counter
 
@@ -327,61 +328,43 @@ def solve(
         # compute KKT of last restart point with current primal weight
         kkt_last_restart = kkt_error_sq(x, y, w)
 
-        # Check for NaN/Inf
-        if torch.isnan(x).any() or torch.isnan(y).any():
-            print(f"NaN detected at outer iteration {n_outer}!")
-            if verbose:
-                print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
-            x_orig, y_orig = x / variable_rescaling, y / constraint_rescaling
-            if verbose:
-                print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
-            return x_orig, y_orig
-        if torch.isinf(x).any() or torch.isinf(y).any():
-            print(f"Inf detected at outer iteration {n_outer}!")
-            if verbose:
-                print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
-            x_orig, y_orig = x / variable_rescaling, y / constraint_rescaling
-            if verbose:
-                print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
-            return x_orig, y_orig
-
         # reset averaging at start of each outer loop
         eta_sum = 0.0
         x_bar, y_bar = x.clone(), y.clone()
-        kkt_c_prev = kkt_last_restart  # Initialize for first iteration
+        kkt_c_prev = kkt_last_restart # initialize for first iteration
 
         for t in range(MAX_INNER_ITERS):
             if termination_criteria(x, y):
                 # print(f"Terminated at iteration {k_global}")
                 if verbose:
                     print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
-                x_orig, y_orig = x / variable_rescaling, y / constraint_rescaling
+                x_orig, y_orig = unscale_solution(x, y)
                 if verbose:
                     print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
                 return x_orig, y_orig
 
             x, y, eta_used, eta_hat = adaptive_step_pdhg(x, y, w, eta_hat, k_global)
 
-            # online weighted average
+            # weighted average of iterates, weighted by step-size
             eta_sum += float(eta_used)
             alpha = float(eta_used) / eta_sum
             x_bar = x_bar + alpha * (x - x_bar)
             y_bar = y_bar + alpha * (y - y_bar)
 
             # choose restart candidate: choose one with lower KKT
-            kkt_z = kkt_error_sq(x, y, w)
-            kkt_b = kkt_error_sq(x_bar, y_bar, w)
-            x_c_new, y_c_new = (x, y) if (kkt_z < kkt_b) else (x_bar, y_bar)
-            kkt_c_new = kkt_z if (kkt_z < kkt_b) else kkt_b
+            kkt_current = kkt_error_sq(x, y, w)
+            kkt_averaged = kkt_error_sq(x_bar, y_bar, w)
+            x_c_new, y_c_new = (x, y) if (kkt_current < kkt_averaged) else (x_bar, y_bar)
+            kkt_c_new = kkt_current if (kkt_current < kkt_averaged) else kkt_averaged
 
             k_global += 1
 
-            # restart criteria
-            cond_i  = (kkt_c_new <= (beta_sufficient**2) * kkt_last_restart)
-            cond_ii = (kkt_c_new <= (beta_necessary**2) * kkt_last_restart) and (t > 0) and (kkt_c_new > kkt_c_prev)
-            cond_iii = (t >= beta_artificial * k_global)
+            # check restart criteria
+            cond_i  = (kkt_c_new <= (beta_sufficient**2) * kkt_last_restart) # sufficient progress made
+            cond_ii = (kkt_c_new <= (beta_necessary**2) * kkt_last_restart) and (t > 0) and (kkt_c_new > kkt_c_prev) # necessary progress + stalling
+            cond_iii = (t >= beta_artificial * k_global) # too many inner iterations
 
-            kkt_c_prev = kkt_c_new # save for next iteration
+            kkt_c_prev = kkt_c_new  # save for next iteration
 
             if cond_i or cond_ii or cond_iii:
                 x_c, y_c = x_c_new, y_c_new
@@ -401,7 +384,7 @@ def solve(
     # Unscale solution back to original space
     if verbose:
         print(f"\nSolution in scaled space: x={x.numpy()}, y={y.numpy()}")
-    x_orig, y_orig = x / variable_rescaling, y / constraint_rescaling
+    x_orig, y_orig = unscale_solution(x, y)
     if verbose:
         print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
     return x_orig, y_orig
