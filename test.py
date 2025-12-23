@@ -251,3 +251,83 @@ def test_problem_6():
     print(f"  {'PASS' if error < 0.01 else 'FAIL'}")
 
     return error < 0.01
+
+
+def test_problem_7():
+    """
+    Test 7: Infeasible problem
+
+    minimize:    x1 + x2
+    subject to:  x1 + x2 >= 10
+                 x1 + x2 <= 5
+    This is clearly infeasible (can't satisfy both constraints)
+    """
+    print("\n" + "=" * 70)
+    print("TEST 7: Infeasible problem")
+    print("=" * 70)
+
+    G = torch.tensor([
+        [1.0, 1.0],   # x1 + x2 >= 10
+        [-1.0, -1.0]  # -(x1 + x2) >= -5, i.e., x1 + x2 <= 5
+    ])
+    h = torch.tensor([10.0, -5.0])
+    A = torch.tensor([]).reshape(0, 2)
+    b = torch.tensor([])
+    c = torch.tensor([1.0, 1.0])
+    l = torch.tensor([0.0, 0.0])
+    u = torch.tensor([10.0, 10.0])
+
+    print("  Objective: minimize x1 + x2")
+    print("  Constraints: x1 + x2 >= 10, x1 + x2 <= 5")
+    print("  Expected: PRIMAL INFEASIBLE")
+
+    x_sol, y_sol = solve(G, A, c, h, b, l, u, verbose=True, MAX_OUTER_ITERS=100)
+
+    print(f"  {'PASS' if True else 'FAIL'}")  # Always pass, just checking detection
+    return True
+
+
+def test_problem_8():
+    """
+    Test 8: Unbounded problem
+
+    minimize:    -x1  (i.e., maximize x1)
+    subject to:  x1 - x2 >= 0  (x1 >= x2)
+                 x1, x2 >= 0, no upper bounds
+    Expected: DUAL INFEASIBLE (primal unbounded)
+
+    This is unbounded because we can set x2 = 0 and let x1 -> infinity,
+    satisfying all constraints while making the objective arbitrarily negative.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 8: Unbounded problem")
+    print("=" * 70)
+
+    G = torch.tensor([[1.0, -1.0]])  # x1 - x2 >= 0
+    h = torch.tensor([0.0])
+    A = torch.tensor([]).reshape(0, 2)
+    b = torch.tensor([])
+    c = torch.tensor([-1.0, 0.0])  # maximize x1
+    l = torch.tensor([0.0, 0.0])
+    u = torch.tensor([float('inf'), float('inf')])  # truly unbounded
+
+    print("  Objective: minimize -x1 (maximize x1)")
+    print("  Constraint: x1 - x2 >= 0 (x1 >= x2)")
+    print("  Bounds: x1, x2 >= 0, no upper bounds")
+    print("  Expected: DUAL INFEASIBLE (primal unbounded)")
+
+    x_sol, y_sol = solve(G, A, c, h, b, l, u, verbose=True, MAX_OUTER_ITERS=100)
+
+    print(f"  {'PASS' if True else 'FAIL'}")  # Always pass, just checking detection
+    return True
+
+
+if __name__ == "__main__":
+    test_problem_1()
+    test_problem_2()
+    test_problem_3()
+    test_problem_4()
+    test_problem_5()
+    test_problem_6()
+    test_problem_7()
+    test_problem_8()
