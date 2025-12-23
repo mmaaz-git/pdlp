@@ -44,7 +44,6 @@ def solve(
     device = c.device
     dtype = c.dtype
     eps_zero = 1e-12
-    eps_bound = 1e9
 
     m1, n = G.shape
     m2 = A.shape[0]
@@ -108,9 +107,11 @@ def solve(
     # Subprocedures
     # -----------------------------
     def proj_X(x: torch.Tensor) -> torch.Tensor:
+        """Project x onto box constraints [l, u]."""
         return torch.clamp(x, l, u)
 
     def proj_Y(y: torch.Tensor) -> torch.Tensor:
+        """Project y onto dual feasible set (y[:m1] >= 0, y[m1:] free)."""
         y2 = y.clone()
         y2[:m1] = torch.clamp(y2[:m1], min=0.0)
         return y2
@@ -133,7 +134,7 @@ def solve(
         return w_old
 
     @torch.no_grad()
-    def compute_lambda_for_box(x, g, lower_bound, upper_bound):
+    def compute_lambda_for_box(x: torch.Tensor, g: torch.Tensor, lower_bound: torch.Tensor, upper_bound: torch.Tensor) -> torch.Tensor:
         """
         Computes lambda, the normal-cone component for box constraints at x.
         g = c - K^t y
@@ -144,8 +145,8 @@ def solve(
         fin_l = torch.isfinite(lower_bound)
         fin_u = torch.isfinite(upper_bound)
 
-        at_l = fin_l & (x <= lower_bound + eps_bound)
-        at_u = fin_u & (x >= upper_bound - eps_bound)
+        at_l = fin_l & (x <= lower_bound + eps_zero)
+        at_u = fin_u & (x >= upper_bound - eps_zero)
 
         # handle numerically-tight boxes where both flags fire
         both = at_l & at_u
@@ -160,7 +161,7 @@ def solve(
         return lam
 
     @torch.no_grad()
-    def kkt_error_sq(x, y, w):
+    def kkt_error_sq(x: torch.Tensor, y: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
         """Equation (5) in the paper."""
         w = torch.as_tensor(w, device=x.device, dtype=x.dtype).clamp_min(eps_zero)
 
@@ -191,7 +192,7 @@ def solve(
         return term1 + term2 + term3
 
     @torch.no_grad()
-    def termination_criteria(x_scaled, y_scaled):
+    def termination_criteria(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> bool:
         """Check termination on original problem, not rescaled."""
         # Unscale solution back to original space
         x_orig = x_scaled / variable_rescaling
@@ -237,7 +238,7 @@ def solve(
         w: torch.Tensor,
         eta_hat: torch.Tensor,
         k: int,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """One PDHG step"""
         eta = torch.as_tensor(eta_hat, device=x.device, dtype=x.dtype).clamp_min(eps_zero)
 
