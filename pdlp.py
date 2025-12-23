@@ -1,20 +1,5 @@
 import torch
 
-"""
-Consider the LP.
-
-  min_x   c^T x
-  s.t.    Gx >= h
-          Ax  = b
-          l <= x <= u
-
-G: (m1,n), A: (m2,n), c: (n,), h: (m1,), b: (m2,)
-K = [G; A]  (m1+m2, n)
-q = [h; b]  (m1+m2,)
-X = {x : l <= x <= u}
-Y = {y : y[:m1] >= 0} (y[m1:] free)
-"""
-
 def solve(
     G: torch.Tensor,
     A: torch.Tensor,
@@ -31,7 +16,44 @@ def solve(
     pock_chambolle_alpha: float = 1.0,
     eps_tol: float = 1e-8,
     verbose: bool = False,
-):
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Solve a Linear Program using the Primal-Dual Hybrid Gradient (PDHG) algorithm.
+
+    Problem formulation:
+        minimize    c^T x
+        subject to  G x >= h  (inequality constraints)
+                    A x  = b  (equality constraints)
+                    l <= x <= u  (variable bounds)
+
+    Args:
+        G: Inequality constraint matrix (m1, n)
+        A: Equality constraint matrix (m2, n)
+        c: Objective coefficient vector (n,)
+        h: Inequality constraint right-hand side (m1,)
+        b: Equality constraint right-hand side (m2,)
+        l: Variable lower bounds (n,) - use -inf for unbounded
+        u: Variable upper bounds (n,) - use +inf for unbounded
+        MAX_OUTER_ITERS: Maximum number of outer iterations (restarts)
+        MAX_INNER_ITERS: Maximum number of inner PDHG iterations per restart
+        MAX_BACKTRACK: Maximum backtracking steps in adaptive step size
+        primal_weight_update_smoothing: Smoothing factor for primal weight updates (0-1)
+        l_inf_ruiz_iterations: Number of Ruiz equilibration iterations
+        pock_chambolle_alpha: Pock-Chambolle rescaling parameter (0 = disable)
+        eps_tol: Convergence tolerance (1e-4 for moderate, 1e-8 for high quality)
+        verbose: Print detailed solver information
+
+    Returns:
+        x_sol: Primal solution (n,)
+        y_sol: Dual solution (m1 + m2,) where y[:m1] are inequality duals, y[m1:] are equality duals
+
+    Notes:
+        - Internally stacks constraints as K = [G; A] and q = [h; b]
+        - Applies Ruiz + Pock-Chambolle rescaling for numerical stability
+        - Uses adaptive step sizing with backtracking line search
+        - Implements restart schemes based on KKT progress
+        - Termination criteria checked on original (unscaled) problem
+    """
     # -----------------------------
     # Shape checks / setup
     # -----------------------------
