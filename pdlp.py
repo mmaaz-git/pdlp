@@ -12,7 +12,7 @@ def solve(
     MAX_INNER_ITERS: int = 100,
     MAX_BACKTRACK: int = 50,
     primal_weight_update_smoothing: float = 0.5,
-    l_inf_ruiz_iterations: int = 10,
+    ruiz_iterations: int = 10,
     pock_chambolle_alpha: float = 1.0,
     eps_tol: float = 1e-8,
     verbose: bool = False,
@@ -38,7 +38,7 @@ def solve(
         MAX_INNER_ITERS: Maximum number of inner PDHG iterations per restart
         MAX_BACKTRACK: Maximum backtracking steps in adaptive step size
         primal_weight_update_smoothing: Smoothing factor for primal weight updates (0-1)
-        l_inf_ruiz_iterations: Number of Ruiz equilibration iterations
+        ruiz_iterations: Number of Ruiz equilibration iterations
         pock_chambolle_alpha: Pock-Chambolle rescaling parameter (0 = disable)
         eps_tol: Convergence tolerance (1e-4 for moderate, 1e-8 for high quality)
         verbose: Print detailed solver information
@@ -87,7 +87,7 @@ def solve(
     variable_rescaling = torch.ones(n, device=device, dtype=dtype)
 
     # Ruiz rescaling (L-infinity equilibration)
-    for _ in range(l_inf_ruiz_iterations):
+    for _ in range(ruiz_iterations):
         # Column rescaling: sqrt(max(|K[:,j]|, |c[j]|))
         col_rescale = torch.sqrt(torch.maximum(K.abs().max(dim=0)[0], c.abs())).clamp_min(eps_zero)
         # Row rescaling: sqrt(max(|K[i,:]|))
