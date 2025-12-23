@@ -366,7 +366,7 @@ def solve(
     eta_hat = (1.0 / K.abs().sum(dim=1).max().clamp_min(eps_zero)).to(device=device, dtype=dtype)
 
     # initial weight
-    w = (torch.linalg.norm(c) / torch.linalg.norm(q)).clamp_min(eps_zero)
+    w = (torch.linalg.norm(c) / torch.linalg.norm(q).clamp_min(eps_zero)).clamp_min(eps_zero)
 
     x, y = x0.clone(), y0.clone() # current iterate
     x_prev, y_prev = x.clone(), y.clone() # past iterate
@@ -477,15 +477,19 @@ def solve(
             dual_ray_obj = (q_orig @ y_ray).item()
 
             if dual_ray_obj > 0:
-                # Check dual residual with objective = 0
-                dual_residual = torch.linalg.norm(K_orig.T @ y_ray).item()
+                # Check dual residual with objective = 0 (use infinity norm)
+                dual_residual = torch.linalg.norm(K_orig.T @ y_ray, ord=float('inf')).item()
                 relative_infeas = dual_residual / dual_ray_obj
 
-                if relative_infeas < 1e-6:  # eps_primal_infeasible
+                # Use looser tolerance for infeasibility (algorithm has diverged, so certificate may not be fully refined)
+                if relative_infeas < eps_tol * 100:  # eps_primal_infeasible
                     status = "primal_infeasible"
                     if verbose:
                         print(f"\n  Status: PRIMAL INFEASIBLE")
-                        print(f"    Farkas certificate: ||K^T y_ray|| / (q^T y_ray) = {relative_infeas:.3e}")
+                        print(f"    Farkas certificate (dual ray): y = {y_ray}")
+                        print(f"      K^T y ≈ 0:  ||K^T y|| = {dual_residual:.3e}")
+                        print(f"      q^T y > 0:  q^T y = {dual_ray_obj:.3e}")
+                        print(f"      Relative certificate quality: {relative_infeas:.3e}")
 
         # Check for dual infeasibility (primal unbounded via primal ray)
         if status == "max_iterations":
@@ -495,17 +499,21 @@ def solve(
                 primal_ray_obj = (c_orig @ x_ray).item()
 
                 if primal_ray_obj < 0:
-                    # Check primal residual with RHS = 0
-                    primal_residual_eq = torch.linalg.norm(A_orig @ x_ray).item()
-                    primal_residual_ineq = torch.linalg.norm(torch.clamp(-(G_orig @ x_ray), min=0.0)).item()
+                    # Check primal residual with RHS = 0 (use infinity norm)
+                    primal_residual_eq = torch.linalg.norm(A_orig @ x_ray, ord=float('inf')).item() if A_orig.shape[0] > 0 else 0.0
+                    primal_residual_ineq = torch.linalg.norm(torch.clamp(-(G_orig @ x_ray), min=0.0), ord=float('inf')).item() if G_orig.shape[0] > 0 else 0.0
                     max_primal_residual = max(primal_residual_eq, primal_residual_ineq)
                     relative_infeas = max_primal_residual / (-primal_ray_obj)
 
-                    if relative_infeas < 1e-6:  # eps_dual_infeasible
+                    # Use looser tolerance for unboundedness (same reason as infeasibility)
+                    if relative_infeas < eps_tol * 100:  # eps_dual_infeasible
                         status = "dual_infeasible"
                         if verbose:
                             print(f"\n  Status: DUAL INFEASIBLE (primal unbounded)")
-                            print(f"    Primal ray: max_residual / (-c^T x_ray) = {relative_infeas:.3e}")
+                            print(f"    Unboundedness certificate (primal ray): x = {x_ray}")
+                            print(f"      K x ≈ 0:  max_residual = {max_primal_residual:.3e}")
+                            print(f"      c^T x < 0:  c^T x = {primal_ray_obj:.3e}")
+                            print(f"      Relative certificate quality: {relative_infeas:.3e}")
 
     if verbose and status in ["optimal", "max_iterations"]:
         status_msg = "converged" if converged else f"max iterations ({MAX_OUTER_ITERS})"
