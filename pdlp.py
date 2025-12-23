@@ -1,5 +1,4 @@
 import torch
-from preprocess import rescale_problem, unscale_solution
 
 """
 Consider the LP.
@@ -29,9 +28,9 @@ def solve(
     MAX_OUTER_ITERS: int = 100,
     MAX_INNER_ITERS: int = 100,
     MAX_BACKTRACK: int = 50,
-    primal_weight_update_smoothing: float = 0.5,  # 0=no update, 1=full update to new ratio
-    l_inf_ruiz_iterations: int = 10,  # Match cuPDLP.jl default
-    pock_chambolle_alpha: float = 1.0,  # Match cuPDLP.jl default
+    primal_weight_update_smoothing: float = 0.5,
+    l_inf_ruiz_iterations: int = 10,
+    pock_chambolle_alpha: float = 1.0,
     eps_tol: float = 1e-8,
     verbose: bool = False,
 ):
@@ -53,42 +52,62 @@ def solve(
     m2 = A.shape[0]
     m = m1 + m2
 
-    # Stack constraints
-    K = torch.cat([G, A], dim=0) # (m, n)
-    q = torch.cat([h, b], dim=0) # (m,)
+    # Stack constraints: K = [G; A], q = [h; b]
+    K = torch.cat([G, A], dim=0)
+    q = torch.cat([h, b], dim=0)
 
-    # Save original problem data for termination checks
-    G_orig, h_orig = G.clone(), h.clone()
-    A_orig, b_orig = A.clone(), b.clone()
+    # Save originals (for termination checks on original problem)
+    G_orig, h_orig, A_orig, b_orig = G.clone(), h.clone(), A.clone(), b.clone()
     c_orig, l_orig, u_orig = c.clone(), l.clone(), u.clone()
     K_orig, q_orig = K.clone(), q.clone()
 
     # -----------------------------
     # Rescaling / Preconditioning
     # -----------------------------
-    # Apply Ruiz + Pock-Chambolle rescaling (matching cuPDLP.jl defaults)
-    K_scaled, c_scaled, q_scaled, l_scaled, u_scaled, constraint_rescaling, variable_rescaling = rescale_problem(
-        K, c, q, l, u,
-        l_inf_ruiz_iterations=l_inf_ruiz_iterations,
-        pock_chambolle_alpha=pock_chambolle_alpha,
-        verbose=verbose,
-    )
+    constraint_rescaling = torch.ones(m, device=device, dtype=dtype)
+    variable_rescaling = torch.ones(n, device=device, dtype=dtype)
 
-    # Work with scaled problem from now on
-    K = K_scaled
-    c = c_scaled
-    q = q_scaled
-    l = l_scaled
-    u = u_scaled
+    # Ruiz rescaling (L-infinity equilibration)
+    for _ in range(l_inf_ruiz_iterations):
+        # Column rescaling: sqrt(max(|K[:,j]|, |c[j]|))
+        col_rescale = torch.sqrt(torch.maximum(K.abs().max(dim=0)[0], c.abs())).clamp_min(eps_zero)
+        # Row rescaling: sqrt(max(|K[i,:]|))
+        row_rescale = torch.sqrt(K.abs().max(dim=1)[0]).clamp_min(eps_zero)
 
-    # Update G, h, A, b to scaled versions (for KKT computation)
-    G = K[:m1, :]
-    h = q[:m1]
-    A = K[m1:, :] if m2 > 0 else A
-    b = q[m1:] if m2 > 0 else b
+        # Apply rescaling
+        c, l, u = c / col_rescale, l * col_rescale, u * col_rescale
+        q = q / row_rescale
+        K = K / row_rescale.unsqueeze(1) / col_rescale.unsqueeze(0)
+
+        constraint_rescaling *= row_rescale
+        variable_rescaling *= col_rescale
+
+    # Pock-Chambolle rescaling (operator norm <= 1)
+    if pock_chambolle_alpha > 0:
+        alpha = pock_chambolle_alpha
+        # Column rescaling: sqrt(sum_i |K[i,j]|^(2-alpha))
+        col_rescale = torch.sqrt((K.abs() ** (2 - alpha)).sum(dim=0)).clamp_min(eps_zero)
+        # Row rescaling: sqrt(sum_j |K[i,j]|^alpha)
+        row_rescale = torch.sqrt((K.abs() ** alpha).sum(dim=1)).clamp_min(eps_zero)
+
+        # Apply rescaling
+        c, l, u = c / col_rescale, l * col_rescale, u * col_rescale
+        q = q / row_rescale
+        K = K / row_rescale.unsqueeze(1) / col_rescale.unsqueeze(0)
+
+        constraint_rescaling *= row_rescale
+        variable_rescaling *= col_rescale
+
+    if verbose:
+        print(f"Rescaling: Ruiz iters={l_inf_ruiz_iterations}, Pock-Chambolle alpha={pock_chambolle_alpha}")
+        print(f"  ||K|| after rescaling: {K.norm():.3e}")
+
+    # Split scaled K, q back into G, h, A, b (for algorithm)
+    G, h = K[:m1, :], q[:m1]
+    A, b = K[m1:, :], q[m1:]
 
     # -----------------------------
-    # Projections
+    # Subprocedures
     # -----------------------------
     def proj_X(x: torch.Tensor) -> torch.Tensor:
         return torch.clamp(x, l, u)
@@ -98,9 +117,6 @@ def solve(
         y2[:m1] = torch.clamp(y2[:m1], min=0.0)
         return y2
 
-    # -----------------------------
-    # Helper functions
-    # -----------------------------
     @torch.no_grad()
     def initialize_primal_weight() -> torch.Tensor:
         return (torch.linalg.norm(c) / torch.linalg.norm(q)).clamp_min(eps_zero)
@@ -330,7 +346,7 @@ def solve(
             print(f"NaN detected at outer iteration {n_outer}!")
             if verbose:
                 print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
-            x_orig, y_orig = unscale_solution(x, y, variable_rescaling, constraint_rescaling)
+            x_orig, y_orig = x / variable_rescaling, y / constraint_rescaling
             if verbose:
                 print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
             return x_orig, y_orig
@@ -338,7 +354,7 @@ def solve(
             print(f"Inf detected at outer iteration {n_outer}!")
             if verbose:
                 print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
-            x_orig, y_orig = unscale_solution(x, y, variable_rescaling, constraint_rescaling)
+            x_orig, y_orig = x / variable_rescaling, y / constraint_rescaling
             if verbose:
                 print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
             return x_orig, y_orig
@@ -353,7 +369,7 @@ def solve(
                 # print(f"Terminated at iteration {k_global}")
                 if verbose:
                     print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
-                x_orig, y_orig = unscale_solution(x, y, variable_rescaling, constraint_rescaling)
+                x_orig, y_orig = x / variable_rescaling, y / constraint_rescaling
                 if verbose:
                     print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
                 return x_orig, y_orig
@@ -397,7 +413,7 @@ def solve(
     # Unscale solution back to original space
     if verbose:
         print(f"\nSolution in scaled space: x={x.numpy()}, y={y.numpy()}")
-    x_orig, y_orig = unscale_solution(x, y, variable_rescaling, constraint_rescaling)
+    x_orig, y_orig = x / variable_rescaling, y / constraint_rescaling
     if verbose:
         print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
     return x_orig, y_orig
