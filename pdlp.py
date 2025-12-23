@@ -102,7 +102,7 @@ def solve(
         print(f"Rescaling: Ruiz iters={l_inf_ruiz_iterations}, Pock-Chambolle alpha={pock_chambolle_alpha}")
         print(f"  ||K|| after rescaling: {K.norm():.3e}")
 
-    # Split scaled K, q back into G, h, A, b (for algorithm)
+    # split scaled K, q back into G, h, A, b (for algorithm)
     G, h = K[:m1, :], q[:m1]
     A, b = K[m1:, :], q[m1:]
 
@@ -138,37 +138,35 @@ def solve(
         return w_old
 
     @torch.no_grad()
-    def compute_lambda_for_box(x, g):
+    def compute_lambda_for_box(x, g, lower_bound, upper_bound):
         """
-        g = c - K^T y.
-        λ is the normal-cone component for box constraints at x.
+        Computes lambda, the normal-cone component for box constraints at x.
+        g = c - K^t y
+        It takes x, g, lower, upper so that we can pass either original or scaled.
         """
         lam = torch.zeros_like(x)
 
-        fin_l = torch.isfinite(l)
-        fin_u = torch.isfinite(u)
+        fin_l = torch.isfinite(lower_bound)
+        fin_u = torch.isfinite(upper_bound)
 
-        at_l = fin_l & (x <= l + eps_bound)
-        at_u = fin_u & (x >= u - eps_bound)
+        at_l = fin_l & (x <= lower_bound + eps_bound)
+        at_u = fin_u & (x >= upper_bound - eps_bound)
 
         # handle numerically-tight boxes where both flags fire
         both = at_l & at_u
         if both.any():
-            dl = (x - l).abs()
-            du = (u - x).abs()
+            dl = (x - lower_bound).abs()
+            du = (upper_bound - x).abs()
             at_l = (at_l & ~both) | (both & (dl <= du))
             at_u = (at_u & ~both) | (both & (du < dl))
 
-        lam[at_l] = torch.clamp(g[at_l], min=0.0)  # λ^+ at lower bound
-        lam[at_u] = torch.clamp(g[at_u], max=0.0)  # λ^- (negative) at upper bound
+        lam[at_l] = torch.clamp(g[at_l], min=0.0)  # lambda^+ at lower bound
+        lam[at_u] = torch.clamp(g[at_u], max=0.0)  # lamda^- (negative) at upper bound
         return lam
 
     @torch.no_grad()
     def kkt_error_sq(x, y, w):
-        """
-        Eq (5): KKT_ω(z)^2
-        with z=(x,y), ω=w.
-        """
+        """Equation (5) in the paper."""
         w = torch.as_tensor(w, device=x.device, dtype=x.dtype).clamp_min(eps_zero)
 
         # primal residuals
@@ -178,7 +176,7 @@ def solve(
 
         # stationarity residual + box multipliers
         g = c - (K.T @ y)
-        lam = compute_lambda_for_box(x, g)
+        lam = compute_lambda_for_box(x, g, l, u)
         rs = g - lam
         term2 = (1.0 / (w**2)) * (rs @ rs)
 
@@ -198,48 +196,22 @@ def solve(
         return term1 + term2 + term3
 
     @torch.no_grad()
-    def get_restart_candidate(x, y, x_bar, y_bar, w):
-        """
-        z_c := z if KKT(z) < KKT(z_bar) else z_bar.
-        (Compare squared KKT; same ordering.)
-        """
-        kkt_z = kkt_error_sq(x, y, w)
-        kkt_b = kkt_error_sq(x_bar, y_bar, w)
-        return (x, y) if (kkt_z < kkt_b) else (x_bar, y_bar)
-
-    @torch.no_grad()
     def termination_criteria(x_scaled, y_scaled):
-        """Check termination on ORIGINAL problem (not rescaled)."""
+        """Check termination on original problem, not rescaled."""
         # Unscale solution back to original space
         x_orig = x_scaled / variable_rescaling
         y_orig = y_scaled / constraint_rescaling
 
-        # Compute lambda for box constraints in original space
-        g_orig = c_orig - (K_orig.T @ y_orig)  # (n,)
-
-        # Compute lambda (normal cone component for box constraints)
-        lam = torch.zeros_like(x_orig)
-        fin_l = torch.isfinite(l_orig)
-        fin_u = torch.isfinite(u_orig)
-
-        at_l = fin_l & (x_orig <= l_orig + eps_bound)
-        at_u = fin_u & (x_orig >= u_orig - eps_bound)
-
-        # Handle tight boxes
-        both = at_l & at_u
-        if both.any():
-            dl = (x_orig - l_orig).abs()
-            du = (u_orig - x_orig).abs()
-            at_l = (at_l & ~both) | (both & (dl <= du))
-            at_u = (at_u & ~both) | (both & (du < dl))
-
-        lam[at_l] = torch.clamp(g_orig[at_l], min=0.0)
-        lam[at_u] = torch.clamp(g_orig[at_u], max=0.0)
+        # Compute gradient and lambda in original space
+        g_orig = c_orig - (K_orig.T @ y_orig)
+        lam = compute_lambda_for_box(x_orig, g_orig, l_orig, u_orig)
 
         # Split lambda into + and -
         lam_pos = torch.clamp(lam, min=0.0)
         lam_minus = torch.clamp(-lam, min=0.0)
 
+        fin_l = torch.isfinite(l_orig)
+        fin_u = torch.isfinite(u_orig)
         l_term = (l_orig[fin_l] * lam_pos[fin_l]).sum()
         u_term = (u_orig[fin_u] * lam_minus[fin_u]).sum()
 
@@ -271,9 +243,7 @@ def solve(
         eta_hat: torch.Tensor,
         k: int,
     ):
-        """
-        One PDHG step
-        """
+        """One PDHG step"""
         eta = torch.as_tensor(eta_hat, device=x.device, dtype=x.dtype).clamp_min(eps_zero)
 
         kp1 = float(k + 1)
@@ -302,7 +272,6 @@ def solve(
 
             if eta <= bar_eta:
                 return x_p, y_p, eta, eta_p
-
             eta = eta_p
 
         return x_p, y_p, eta, eta
@@ -382,18 +351,20 @@ def solve(
             x_bar = x_bar + alpha * (x - x_bar)
             y_bar = y_bar + alpha * (y - y_bar)
 
-            # choose restart candidate z_c^{n,t+1}
-            x_c_new, y_c_new = get_restart_candidate(x, y, x_bar, y_bar, w)
-            kkt_c_new = kkt_error_sq(x_c_new, y_c_new, w)
+            # choose restart candidate: choose one with lower KKT
+            kkt_z = kkt_error_sq(x, y, w)
+            kkt_b = kkt_error_sq(x_bar, y_bar, w)
+            x_c_new, y_c_new = (x, y) if (kkt_z < kkt_b) else (x_bar, y_bar)
+            kkt_c_new = kkt_z if (kkt_z < kkt_b) else kkt_b
 
             k_global += 1
 
-            # restart criteria (matching cuPDLP.jl logic)
+            # restart criteria
             cond_i  = (kkt_c_new <= (beta_sufficient**2) * kkt_last_restart)
             cond_ii = (kkt_c_new <= (beta_necessary**2) * kkt_last_restart) and (t > 0) and (kkt_c_new > kkt_c_prev)
             cond_iii = (t >= beta_artificial * k_global)
 
-            kkt_c_prev = kkt_c_new # s for next iteration
+            kkt_c_prev = kkt_c_new # save for next iteration
 
             if cond_i or cond_ii or cond_iii:
                 x_c, y_c = x_c_new, y_c_new
