@@ -5,6 +5,3 @@ A variant of PDHG (primal-dual hybrid gradient) for linear programming. It tries
 The code is meant to have a "linear flow" as much as possible, so that steps are "in line" as much as possible so the reader can see what is going on and easily map it to the math. The entire implementation is less than 400 lines, entirely in one function `solve()` in `pdlp.py`.
 
 TODO:
-- add infeasible/unbounded check
-- solver should return a status field as well
--
