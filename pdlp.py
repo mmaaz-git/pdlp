@@ -128,10 +128,6 @@ def solve(
     # -----------------------------
     # Subprocedures
     # -----------------------------
-    def unscale_solution(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Unscale solution from scaled space back to original space."""
-        return x_scaled / variable_rescaling, y_scaled / constraint_rescaling
-
     def proj_X(x: torch.Tensor) -> torch.Tensor:
         """Project x onto box constraints [l, u]."""
         return torch.clamp(x, l, u)
@@ -220,7 +216,8 @@ def solve(
     @torch.no_grad()
     def termination_criteria(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> bool:
         """Check termination on original problem, not rescaled."""
-        x_orig, y_orig = unscale_solution(x_scaled, y_scaled)
+        x_orig = x_scaled / variable_rescaling
+        y_orig = y_scaled / constraint_rescaling
 
         # compute gradient and lambda in original space
         g_orig = c_orig - (K_orig.T @ y_orig)
@@ -323,6 +320,7 @@ def solve(
     beta_artificial = 0.36 # used for artifical restart condition
 
     k_global = 0 # global step counter
+    converged = False
 
     for n_outer in range(MAX_OUTER_ITERS):
         # compute KKT of last restart point with current primal weight
@@ -335,13 +333,8 @@ def solve(
 
         for t in range(MAX_INNER_ITERS):
             if termination_criteria(x, y):
-                # print(f"Terminated at iteration {k_global}")
-                if verbose:
-                    print(f"Solution in scaled space: x={x.numpy()}, y={y.numpy()}")
-                x_orig, y_orig = unscale_solution(x, y)
-                if verbose:
-                    print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
-                return x_orig, y_orig
+                converged = True
+                break
 
             x, y, eta_used, eta_hat = adaptive_step_pdhg(x, y, w, eta_hat, k_global)
 
@@ -372,6 +365,9 @@ def solve(
         else:
             x_c, y_c = x_c_new, y_c_new
 
+        # break out of outer loop if converged
+        if converged: break
+
         # restart from candidate
         x, y = x_c, y_c
 
@@ -384,7 +380,8 @@ def solve(
     # Unscale solution back to original space
     if verbose:
         print(f"\nSolution in scaled space: x={x.numpy()}, y={y.numpy()}")
-    x_orig, y_orig = unscale_solution(x, y)
+    x_orig = x / variable_rescaling
+    y_orig = y / constraint_rescaling
     if verbose:
         print(f"Solution in original space: x={x_orig.numpy()}, y={y_orig.numpy()}")
     return x_orig, y_orig
