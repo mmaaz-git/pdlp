@@ -11,7 +11,7 @@ def solve(
     MAX_OUTER_ITERS: int = 100,
     MAX_INNER_ITERS: int = 100,
     MAX_BACKTRACK: int = 50,
-    primal_weight_update_smoothing: float = 0.5,
+    primal_weight_update_smoothing: float = 0.3,
     ruiz_iterations: int = 10,
     pock_chambolle_alpha: float = 1.0,
     eps_tol: float = 1e-6,
