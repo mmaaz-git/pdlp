@@ -46,7 +46,7 @@ def test_problem_1():
     print(f"  Error: {error:.6e}")
     print(f"  {'PASS' if error < 0.01 else 'FAIL'}")
 
-    return error < 0.01
+    assert error < 0.01
 
 
 def test_problem_2():
@@ -86,7 +86,7 @@ def test_problem_2():
     print(f"  Error: {error:.6e}")
     print(f"  {'PASS' if error < 0.01 else 'FAIL'}")
 
-    return error < 0.01
+    assert error < 0.01
 
 
 def test_problem_3():
@@ -132,7 +132,7 @@ def test_problem_3():
     print(f"  Error from expected obj: {error:.6e}")
     print(f"  {'PASS' if error < 0.01 else 'FAIL'}")
 
-    return error < 0.01
+    assert error < 0.01
 
 
 def test_problem_4():
@@ -172,7 +172,7 @@ def test_problem_4():
     print(f"  Error: {error:.6e}")
     print(f"  {'PASS' if error < 0.1 else 'FAIL'}")  # Relaxed tolerance for unbounded
 
-    return error < 0.1
+    assert error < 0.1
 
 
 def test_problem_5():
@@ -212,7 +212,7 @@ def test_problem_5():
     print(f"  Error: {error:.6e}")
     print(f"  {'PASS' if error < 0.01 else 'FAIL'}")
 
-    return error < 0.01
+    assert error < 0.01
 
 
 def test_problem_6():
@@ -253,7 +253,7 @@ def test_problem_6():
     print(f"  Error: {error:.6e}")
     print(f"  {'PASS' if error < 0.01 else 'FAIL'}")
 
-    return error < 0.01
+    assert error < 0.01
 
 
 def test_problem_7():
