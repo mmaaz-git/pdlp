@@ -242,7 +242,7 @@ def solve(
 
         if (dx > eps_zero) and (dy > eps_zero):
             ratio = (dy / dx).clamp_min(eps_zero)
-            # exponential moving average: w_new = ratio^αlpha * w_old^(1-αlpha)
+            # exponential moving average: w_new = ratio^alpha * w_old^(1-alpha)
             w_new = (ratio ** primal_weight_update_smoothing) * (w_old ** (1.0 - primal_weight_update_smoothing))
             return w_new.clamp_min(eps_zero)
         return w_old
