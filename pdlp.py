@@ -245,24 +245,19 @@ def solve(
         return lam
 
     @torch.no_grad()
-    def compute_dual_objective(x: torch.Tensor, y: torch.Tensor, c: torch.Tensor,
-                              K: torch.Tensor, q: torch.Tensor,
-                              lower: torch.Tensor, upper: torch.Tensor) -> torch.Tensor:
-        """
-        Computes the full dual objective: q^T y + l^T λ+ - u^T λ-
-        where λ are the reduced costs (dual multipliers on bounds).
-        """
-        g = c - (K.T @ y)
-        lam = compute_lambda_for_box(x, g, lower, upper)
+    def compute_dual_objective(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """Computes dual objective q^T y + l^T λ+ - u^T λ- for the original (unscaled) problem."""
+        g = c_orig - (K_orig.T @ y)
+        lam = compute_lambda_for_box(x, g, l_orig, u_orig)
         lam_pos = torch.clamp(lam, min=0.0)
         lam_neg = torch.clamp(-lam, min=0.0)
 
-        fin_l = torch.isfinite(lower)
-        fin_u = torch.isfinite(upper)
-        l_term = (lower[fin_l] * lam_pos[fin_l]).sum()
-        u_term = (upper[fin_u] * lam_neg[fin_u]).sum()
+        fin_l = torch.isfinite(l_orig)
+        fin_u = torch.isfinite(u_orig)
+        l_term = (l_orig[fin_l] * lam_pos[fin_l]).sum()
+        u_term = (u_orig[fin_u] * lam_neg[fin_u]).sum()
 
-        return (q @ y) + l_term - u_term
+        return (q_orig @ y) + l_term - u_term
 
     @torch.no_grad()
     def kkt_error_sq(x: torch.Tensor, y: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
@@ -298,13 +293,12 @@ def solve(
     @torch.no_grad()
     def termination_criteria(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> tuple[bool, str, dict]:
         """Check termination on original problem. Returns (converged, status, info)."""
-        x_orig = x_scaled / variable_rescaling
-        y_orig = y_scaled / constraint_rescaling
+        x_unscaled, y_unscaled = x_scaled / variable_rescaling, y_scaled / constraint_rescaling
 
         # Check for primal infeasibility (Farkas certificate via dual ray)
-        dual_norm_inf = torch.max(y_orig.abs())
+        dual_norm_inf = torch.max(y_unscaled.abs())
         if dual_norm_inf > eps_zero:
-            y_ray = y_orig / dual_norm_inf
+            y_ray = y_unscaled / dual_norm_inf
             dual_ray_obj = (q_orig @ y_ray).item()
             if dual_ray_obj > 0:
                 dual_residual = torch.linalg.norm(K_orig.T @ y_ray, ord=float('inf')).item()
@@ -313,9 +307,9 @@ def solve(
                     return False, "primal_infeasible", {"ray": y_ray, "certificate_quality": relative_infeas}
 
         # Check for dual infeasibility (primal unbounded via primal ray)
-        primal_norm_inf = torch.max(x_orig.abs())
+        primal_norm_inf = torch.max(x_unscaled.abs())
         if primal_norm_inf > eps_zero:
-            x_ray = x_orig / primal_norm_inf
+            x_ray = x_unscaled / primal_norm_inf
             primal_ray_obj = (c_orig @ x_ray).item()
             if primal_ray_obj < 0:
                 primal_residual_eq = torch.linalg.norm(A_orig @ x_ray, ord=float('inf')).item() if A_orig.shape[0] > 0 else 0.0
@@ -326,21 +320,24 @@ def solve(
                     return False, "dual_infeasible", {"ray": x_ray, "certificate_quality": relative_infeas}
 
         # Check for optimality
-        dual_obj = compute_dual_objective(x_orig, y_orig, c_orig, K_orig, q_orig, l_orig, u_orig)
-        primal_obj = c_orig @ x_orig
+        dual_obj = compute_dual_objective(x_unscaled, y_unscaled)
+        primal_obj = c_orig @ x_unscaled
 
-        g_orig = c_orig - (K_orig.T @ y_orig)
-        lam = compute_lambda_for_box(x_orig, g_orig, l_orig, u_orig)
+        g_orig = c_orig - (K_orig.T @ y_unscaled)
+        lam = compute_lambda_for_box(x_unscaled, g_orig, l_orig, u_orig)
 
+        # condition (1): relative duality gap: |primal_obj - dual_obj| / (1 + |primal_obj| + |dual_obj|)
         gap_num = torch.abs(dual_obj - primal_obj)
         gap_den = 1.0 + torch.abs(dual_obj) + torch.abs(primal_obj)
         gap_ok = (gap_num / gap_den) <= eps_tol
 
-        r_eq = b_orig - (A_orig @ x_orig)
-        r_ineq = torch.clamp(h_orig - (G_orig @ x_orig), min=0.0)
+        # condition (2): primal feasibility
+        r_eq = b_orig - (A_orig @ x_unscaled)
+        r_ineq = torch.clamp(h_orig - (G_orig @ x_unscaled), min=0.0)
         feas = torch.sqrt((r_eq @ r_eq) + (r_ineq @ r_ineq))
         feas_ok = feas <= eps_tol * (1.0 + torch.linalg.norm(q_orig))
 
+        # condition (3): stationarity (dual feasibility)
         stat = torch.linalg.norm(g_orig - lam)
         stat_ok = stat <= eps_tol * (1.0 + torch.linalg.norm(c_orig))
 
@@ -425,13 +422,12 @@ def solve(
         kkt_last_restart = kkt_error_sq(x, y, w)
 
         # Save unscaled values for final return
-        x_unscaled = x / variable_rescaling
-        y_unscaled = y / constraint_rescaling
+        x_unscaled, y_unscaled = x / variable_rescaling, y / constraint_rescaling
         x_unscaled_last, y_unscaled_last = x_unscaled.clone(), y_unscaled.clone()
 
         if verbose and n_outer % 10 == 0:
             primal_obj = (c_orig @ x_unscaled).item()
-            dual_obj = compute_dual_objective(x_unscaled, y_unscaled, c_orig, K_orig, q_orig, l_orig, u_orig).item()
+            dual_obj = compute_dual_objective(x_unscaled, y_unscaled).item()
             print(f"  Iter {n_outer:3d}: primal_obj = {primal_obj:+.6e}, dual_obj = {dual_obj:+.6e}, gap = {abs(primal_obj - dual_obj):.3e}, KKT = {torch.sqrt(kkt_last_restart).item():.3e}")
 
         # reset averaging at start of each outer loop
@@ -518,7 +514,7 @@ def solve(
         elif status in ["optimal", "max_iterations"]:
             status_msg = "converged" if converged else f"max iterations ({MAX_OUTER_ITERS})"
             primal_obj = (c_orig @ x_orig).item()
-            dual_obj = compute_dual_objective(x_orig, y_orig, c_orig, K_orig, q_orig, l_orig, u_orig).item()
+            dual_obj = compute_dual_objective(x_orig, y_orig).item()
             print(f"\n  Status: {status_msg} after {k_global} total iterations")
             print(f"  Primal objective: {primal_obj:.6e}")
             print(f"  Dual objective: {dual_obj:.6e}")
