@@ -6,8 +6,13 @@ import torch
 from collections import defaultdict
 
 
-def parse_mps(filename):
-    """Parse MPS file and return LP in our format."""
+def parse_mps(filename, sparse=True):
+    """Parse MPS file and return LP in our format.
+
+    Args:
+        filename: Path to MPS file
+        sparse: If True, return sparse COO tensors for G and A
+    """
     with open(filename, 'r') as f:
         lines = [line.rstrip() for line in f.readlines()]
 
@@ -121,25 +126,66 @@ def parse_mps(filename):
     m2 = len(eq_rows)    # equalities
 
     # Build G matrix (inequalities as >=)
-    G = torch.zeros(m1, n)
-    h = torch.zeros(m1)
-    for new_i, (old_i, row_type, row_name) in enumerate(ineq_rows):
-        for col_name, val in coeffs[row_name].items():
-            if row_type == 'L':  # a'x <= b  =>  -a'x >= -b
-                G[new_i, col_names[col_name]] = -val
-            else:  # G type: a'x >= b
-                G[new_i, col_names[col_name]] = val
+    if sparse:
+        G_rows, G_cols, G_vals = [], [], []
+        h = torch.zeros(m1)
+        for new_i, (old_i, row_type, row_name) in enumerate(ineq_rows):
+            for col_name, val in coeffs[row_name].items():
+                G_rows.append(new_i)
+                G_cols.append(col_names[col_name])
+                if row_type == 'L':  # a'x <= b  =>  -a'x >= -b
+                    G_vals.append(-val)
+                else:  # G type: a'x >= b
+                    G_vals.append(val)
+            rhs = rhs_vals.get(row_name, 0.0)
+            h[new_i] = -rhs if row_type == 'L' else rhs
 
-        rhs = rhs_vals.get(row_name, 0.0)
-        h[new_i] = -rhs if row_type == 'L' else rhs
+        if m1 > 0:
+            G = torch.sparse_coo_tensor(
+                torch.tensor([G_rows, G_cols]),
+                torch.tensor(G_vals),
+                (m1, n)
+            )
+        else:
+            G = torch.zeros(0, n).to_sparse_coo()
+    else:
+        G = torch.zeros(m1, n)
+        h = torch.zeros(m1)
+        for new_i, (old_i, row_type, row_name) in enumerate(ineq_rows):
+            for col_name, val in coeffs[row_name].items():
+                if row_type == 'L':  # a'x <= b  =>  -a'x >= -b
+                    G[new_i, col_names[col_name]] = -val
+                else:  # G type: a'x >= b
+                    G[new_i, col_names[col_name]] = val
+            rhs = rhs_vals.get(row_name, 0.0)
+            h[new_i] = -rhs if row_type == 'L' else rhs
 
     # Build A matrix (equalities)
-    A = torch.zeros(m2, n)
-    b = torch.zeros(m2)
-    for new_i, (old_i, row_name) in enumerate(eq_rows):
-        for col_name, val in coeffs[row_name].items():
-            A[new_i, col_names[col_name]] = val
-        b[new_i] = rhs_vals.get(row_name, 0.0)
+    if sparse:
+        A_rows, A_cols, A_vals = [], [], []
+        b = torch.zeros(m2)
+        for new_i, (old_i, row_name) in enumerate(eq_rows):
+            for col_name, val in coeffs[row_name].items():
+                A_rows.append(new_i)
+                A_cols.append(col_names[col_name])
+                A_vals.append(val)
+            b[new_i] = rhs_vals.get(row_name, 0.0)
+
+        if m2 > 0:
+            A = torch.sparse_coo_tensor(
+                torch.tensor([A_rows, A_cols]),
+                torch.tensor(A_vals),
+                (m2, n)
+            )
+        else:
+            A = torch.zeros(0, n).to_sparse_coo()
+    else:
+        A = torch.zeros(m2, n)
+        b = torch.zeros(m2)
+        for new_i, (old_i, row_name) in enumerate(eq_rows):
+            for col_name, val in coeffs[row_name].items():
+                A[new_i, col_names[col_name]] = val
+            b[new_i] = rhs_vals.get(row_name, 0.0)
 
     # Bounds
     l = torch.zeros(n)
@@ -148,5 +194,15 @@ def parse_mps(filename):
         if col_name in bounds:
             l[idx] = bounds[col_name][0]
             u[idx] = bounds[col_name][1]
+
+    # Print sparsity statistics
+    if sparse:
+        G_nnz = G._nnz() if m1 > 0 else 0
+        A_nnz = A._nnz() if m2 > 0 else 0
+        total_nnz = G_nnz + A_nnz
+        total_elements = (m1 + m2) * n
+        density = total_nnz / total_elements if total_elements > 0 else 0
+        print(f"Sparsity: {G_nnz:,} + {A_nnz:,} = {total_nnz:,} nonzeros")
+        print(f"Density: {density*100:.4f}% (sparsity: {(1-density)*100:.4f}%)")
 
     return G, A, c, h, b, l, u
