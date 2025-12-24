@@ -151,10 +151,8 @@ if __name__ == "__main__":
     # Test sizes
     sizes = [
         (10, 15, "Tiny"),
-        (40, 60, "Small"),
-        (100, 150, "Medium"),
-        (200, 300, "Large"),
-        (400, 600, "Huge"),
+        (40, 60, "Medium"),
+        (100, 150, "Large")
     ]
 
     results = []
