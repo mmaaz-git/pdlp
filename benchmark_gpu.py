@@ -64,7 +64,7 @@ def create_transportation_problem(n_suppliers, n_customers):
     return G, A, c, h, b, l, u
 
 
-def benchmark(device_name, n_suppliers, n_customers, n_runs=3):
+def benchmark(device_name, n_suppliers, n_customers, n_runs=2):
     """Benchmark solver on specified device."""
     device = torch.device(device_name)
 
@@ -88,7 +88,8 @@ def benchmark(device_name, n_suppliers, n_customers, n_runs=3):
     u = u.to(device)
 
     # Scale max iterations with problem size (roughly sqrt(n))
-    max_iters = max(100, int(200 * (n_vars / 150) ** 0.5))
+    # But cap at reasonable values for benchmarking
+    max_iters = max(100, min(500, int(200 * (n_vars / 150) ** 0.5)))
     print(f"Max iterations: {max_iters}")
 
     # Warmup
@@ -138,9 +139,11 @@ if __name__ == "__main__":
 
     # Test sizes
     sizes = [
-        (10, 15, "Small"),
-        (20, 30, "Medium"),
-        (40, 60, "Large"),
+        (10, 15, "Tiny"),
+        (40, 60, "Small"),
+        (100, 150, "Medium"),
+        (200, 300, "Large"),
+        (400, 600, "Huge"),
     ]
 
     results = []
