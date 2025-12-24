@@ -14,7 +14,9 @@ def solve(
     primal_weight_update_smoothing: float = 0.5,
     ruiz_iterations: int = 10,
     pock_chambolle_alpha: float = 1.0,
-    eps_tol: float = 1e-8,
+    eps_tol: float = 1e-6,
+    eps_primal_infeasible: float = 1e-8,
+    eps_dual_infeasible: float = 1e-8,
     verbose: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, str, dict]:
     """
@@ -40,7 +42,9 @@ def solve(
         primal_weight_update_smoothing: Smoothing factor for primal weight updates (0-1)
         ruiz_iterations: Number of Ruiz equilibration iterations
         pock_chambolle_alpha: Pock-Chambolle rescaling parameter (0 = disable)
-        eps_tol: Convergence tolerance (1e-4 for moderate, 1e-8 for high quality)
+        eps_tol: Convergence tolerance for optimality (default 1e-6)
+        eps_primal_infeasible: Tolerance for primal infeasibility detection (default 1e-8)
+        eps_dual_infeasible: Tolerance for dual infeasibility detection (default 1e-8)
         verbose: Print detailed solver information
 
     Returns:
@@ -332,7 +336,7 @@ def solve(
             if dual_ray_obj > 0:
                 dual_residual = torch.linalg.norm(K_orig.T @ y_ray, ord=float('inf')).item()
                 relative_infeas = dual_residual / dual_ray_obj
-                if relative_infeas < eps_tol * 100:
+                if relative_infeas < eps_primal_infeasible:
                     return "primal_infeasible", {
                         "ray": y_ray,
                         "certificate_quality": relative_infeas,
@@ -350,7 +354,7 @@ def solve(
                 primal_residual_ineq = torch.linalg.norm(torch.clamp(-(G_orig @ x_ray), min=0.0), ord=float('inf')).item() if G_orig.shape[0] > 0 else 0.0
                 max_primal_residual = max(primal_residual_eq, primal_residual_ineq)
                 relative_infeas = max_primal_residual / (-primal_ray_obj)
-                if relative_infeas < eps_tol * 100:
+                if relative_infeas < eps_dual_infeasible:
                     return "dual_infeasible", {
                         "ray": x_ray,
                         "certificate_quality": relative_infeas,

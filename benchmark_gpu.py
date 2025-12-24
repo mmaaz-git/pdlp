@@ -90,12 +90,16 @@ def benchmark(device_name, n_suppliers, n_customers, n_runs=2):
     # Scale max iterations with problem size (roughly sqrt(n))
     # But cap at reasonable values for benchmarking
     max_iters = max(100, min(500, int(200 * (n_vars / 150) ** 0.5)))
-    print(f"Max iterations: {max_iters}")
+
+    # Use Julia's default tolerance (1e-6)
+    eps_tol = 1e-6
+
+    print(f"Max iterations: {max_iters}, tolerance: {eps_tol:.0e}")
 
     # Warmup
     if device.type == 'cuda':
         print("Warming up GPU...")
-        x, y, status, info = solve(G, A, c, h, b, l, u, verbose=False, MAX_OUTER_ITERS=max_iters)
+        x, y, status, info = solve(G, A, c, h, b, l, u, verbose=False, MAX_OUTER_ITERS=max_iters, eps_tol=eps_tol)
         torch.cuda.synchronize()
 
     times = []
@@ -104,7 +108,7 @@ def benchmark(device_name, n_suppliers, n_customers, n_runs=2):
             torch.cuda.synchronize()
 
         start = time.time()
-        x, y, status, info = solve(G, A, c, h, b, l, u, verbose=False, MAX_OUTER_ITERS=max_iters)
+        x, y, status, info = solve(G, A, c, h, b, l, u, verbose=False, MAX_OUTER_ITERS=max_iters, eps_tol=eps_tol)
 
         if device.type == 'cuda':
             torch.cuda.synchronize()
@@ -112,14 +116,20 @@ def benchmark(device_name, n_suppliers, n_customers, n_runs=2):
         elapsed = time.time() - start
         times.append(elapsed)
 
-        gap = abs(info['primal_obj'] - info['dual_obj'])
-        print(f"  Run {run+1}: {elapsed:.3f}s - {status} (gap: {gap:.3e})")
+        if status in ["optimal", "max_iterations"]:
+            gap = abs(info['primal_obj'] - info['dual_obj'])
+            print(f"  Run {run+1}: {elapsed:.3f}s - {status} (gap: {gap:.3e})")
+        else:
+            print(f"  Run {run+1}: {elapsed:.3f}s - {status}")
 
     avg_time = sum(times) / len(times)
     print(f"\nAverage: {avg_time:.3f}s")
-    print(f"Primal obj: {info['primal_obj']:.2f}")
-    print(f"Dual obj: {info['dual_obj']:.2f}")
-    print(f"Final gap: {abs(info['primal_obj'] - info['dual_obj']):.3e}")
+    if status in ["optimal", "max_iterations"]:
+        print(f"Primal obj: {info['primal_obj']:.2f}")
+        print(f"Dual obj: {info['dual_obj']:.2f}")
+        print(f"Final gap: {abs(info['primal_obj'] - info['dual_obj']):.3e}")
+    else:
+        print(f"Status: {status}")
 
     return avg_time
 
