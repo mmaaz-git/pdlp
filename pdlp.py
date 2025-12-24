@@ -220,15 +220,11 @@ def solve(
     # -----------------------------
     # Subprocedures
     # -----------------------------
-    def proj_X(x: torch.Tensor) -> torch.Tensor:
-        """Project x onto box constraints [l, u]."""
-        return torch.clamp(x, l, u)
+    # project x onto box constraints [l, u]
+    def proj_X(x: torch.Tensor) -> torch.Tensor: return torch.clamp(x, l, u)
 
-    def proj_Y(y: torch.Tensor) -> torch.Tensor:
-        """Project y onto dual feasible set (y[:m1] >= 0, y[m1:] free)."""
-        y2 = y.clone()
-        y2[:m1] = torch.clamp(y2[:m1], min=0.0)
-        return y2
+    # project y onto dual feasible set (y[:m1] >= 0, y[m1:] free).
+    def proj_Y(y: torch.Tensor) -> torch.Tensor: return torch.cat([torch.clamp(y[:m1], min=0.0), y[m1:]])
 
     @torch.no_grad()
     def primal_weight_update(
@@ -274,6 +270,11 @@ def solve(
         lam[at_u] = torch.clamp(g[at_u], max=0.0) # lamda^- at upper bound
         return lam
 
+    def sum_finite_products(values: torch.Tensor, multipliers: torch.Tensor) -> torch.Tensor:
+        """Sum values[i] * multipliers[i] where values[i] is finite (not inf)."""
+        finite = torch.isfinite(values)
+        return (values[finite] * multipliers[finite]).sum() if finite.any() else torch.tensor(0.0, device=values.device, dtype=values.dtype)
+
     @torch.no_grad()
     def compute_dual_objective(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Computes dual objective q^T y + l^T λ+ - u^T λ- for the original (unscaled) problem."""
@@ -282,10 +283,8 @@ def solve(
         lam_pos = torch.clamp(lam, min=0.0)
         lam_neg = torch.clamp(-lam, min=0.0)
 
-        fin_l = torch.isfinite(l_orig)
-        fin_u = torch.isfinite(u_orig)
-        l_term = (l_orig[fin_l] * lam_pos[fin_l]).sum()
-        u_term = (u_orig[fin_u] * lam_neg[fin_u]).sum()
+        l_term = sum_finite_products(l_orig, lam_pos)
+        u_term = sum_finite_products(u_orig, lam_neg)
 
         return (q_orig @ y) + l_term - u_term
 
@@ -309,11 +308,8 @@ def solve(
         lam_pos = torch.clamp(lam, min=0.0)
         lam_minus = torch.clamp(-lam, min=0.0)
 
-        fin_l = torch.isfinite(l)
-        fin_u = torch.isfinite(u)
-
-        l_term = (l[fin_l] * lam_pos[fin_l]).sum()
-        u_term = (u[fin_u] * lam_minus[fin_u]).sum()
+        l_term = sum_finite_products(l, lam_pos)
+        u_term = sum_finite_products(u, lam_minus)
 
         scalar = (q @ y) + l_term - u_term - (c @ x)
         term3 = scalar * scalar
@@ -405,8 +401,6 @@ def solve(
         kp1 = float(k + 1)
         fac1 = 1.0 if k == 0 else 1.0 - (kp1 ** -0.3)
         fac2 = 1.0 + (kp1 ** -0.6)
-        fac1 = torch.tensor(fac1, device=x.device, dtype=x.dtype)
-        fac2 = torch.tensor(fac2, device=x.device, dtype=x.dtype)
 
         for _ in range(MAX_BACKTRACK):
             x_p = proj_X(x - (eta / w) * (c - (K.T @ y)))
