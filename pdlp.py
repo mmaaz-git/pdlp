@@ -71,14 +71,15 @@ def solve(
     m2 = A.shape[0]
     m = m1 + m2
 
-    # stack constraints: K = [G; A], q = [h; b]
-    K = torch.cat([G, A], dim=0)
-    q = torch.cat([h, b], dim=0)
-
     # save originals (for termination checks on original problem)
     G_orig, h_orig, A_orig, b_orig = G.clone(), h.clone(), A.clone(), b.clone()
     c_orig, l_orig, u_orig = c.clone(), l.clone(), u.clone()
-    K_orig, q_orig = K.clone(), q.clone()
+
+    # stack constraints: K = [G; A], q = [h; b]
+    K = torch.cat([G, A], dim=0)
+    q = torch.cat([h, b], dim=0)
+    K_orig = torch.cat([G_orig, A_orig], dim=0)
+    q_orig = torch.cat([h_orig, b_orig], dim=0)
 
     # -----------------------------
     # Trivial cases: no variables or no constraints
@@ -193,11 +194,10 @@ def solve(
 
     # Pock-Chambolle rescaling (operator norm <= 1)
     if pock_chambolle_alpha > 0:
-        alpha = pock_chambolle_alpha
         # column rescaling: sqrt(sum_i |K[i,j]|^(2-alpha))
-        col_rescale = torch.sqrt((K.abs() ** (2 - alpha)).sum(dim=0)).clamp_min(eps_zero)
+        col_rescale = torch.sqrt((K.abs() ** (2 - pock_chambolle_alpha)).sum(dim=0)).clamp_min(eps_zero)
         # row rescaling: sqrt(sum_j |K[i,j]|^alpha)
-        row_rescale = torch.sqrt((K.abs() ** alpha).sum(dim=1)).clamp_min(eps_zero)
+        row_rescale = torch.sqrt((K.abs() ** pock_chambolle_alpha).sum(dim=1)).clamp_min(eps_zero)
 
         # Apply rescaling
         c, l, u = c / col_rescale, l * col_rescale, u * col_rescale
@@ -411,11 +411,7 @@ def solve(
 
             num = w * (dx @ dx) + (dy @ dy) / w
             denom = 2 * torch.abs(dy @ K @ dx)
-
-            if denom <= eps_zero:
-                bar_eta = torch.tensor(float("inf"), device=dx.device, dtype=dx.dtype)
-            else:
-                bar_eta = num / denom
+            bar_eta = torch.tensor(float("inf"), device=dx.device, dtype=dx.dtype) if denom <= eps_zero else num / denom
 
             eta_p = torch.minimum(fac1 * bar_eta, fac2 * eta).clamp_min(eps_zero)
 
