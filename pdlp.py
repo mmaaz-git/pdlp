@@ -132,8 +132,8 @@ def solve(
             return torch.zeros(0, device=device, dtype=dtype), torch.zeros(m, device=device, dtype=dtype), "primal_infeasible", info
 
     if m == 0:
-        # No constraints: optimal if all variables bounded in direction of objective
-        # Unbounded if any c[i] < 0 and u[i] = inf (or c[i] > 0 and l[i] = -inf)
+        # no constraints: optimal if all variables bounded in direction of objective
+        # unbounded if any c[i] < 0 and u[i] = inf (or c[i] > 0 and l[i] = -inf)
         x_sol = torch.where(c < -eps_zero, u, l)  # minimize c^T x: go to u if c<0, else l
 
         unbounded_mask = ((c < -eps_zero) & torch.isinf(u)) | ((c > eps_zero) & torch.isinf(l))
@@ -143,7 +143,7 @@ def solve(
             print(f"  Problem: {m1} inequalities, {m2} equalities, {n} variables")
 
         if unbounded_mask.any():
-            # Construct unboundedness ray
+            # construct unboundedness ray
             x_ray = torch.zeros(n, device=device, dtype=dtype)
             unbounded_idx = torch.where(unbounded_mask)[0][0]  # pick first unbounded direction
             x_ray[unbounded_idx] = 1.0 if c[unbounded_idx] < 0 else -1.0
