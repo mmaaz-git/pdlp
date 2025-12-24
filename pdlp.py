@@ -201,29 +201,17 @@ def solve(
 
     @torch.no_grad()
     def compute_lambda_for_box(x: torch.Tensor, g: torch.Tensor, lower: torch.Tensor, upper: torch.Tensor) -> torch.Tensor:
-        """
-        Computes lambda, the normal-cone component for box constraints at x.
-        g = c - K^t y
-        It takes x, g, lower, upper so that we can pass either original or scaled.
-        """
+        """Computes lambda, the normal-cone component for box constraints at x."""
         lam = torch.zeros_like(x)
-
-        fin_l = torch.isfinite(lower)
-        fin_u = torch.isfinite(upper)
-
-        at_l = fin_l & (x <= lower + eps_tol)
-        at_u = fin_u & (x >= upper - eps_tol)
-
+        at_l = torch.isfinite(lower) & (x <= lower + eps_tol)
+        at_u = torch.isfinite(upper) & (x >= upper - eps_tol)
         # handle numerically-tight boxes where both flags fire
         both = at_l & at_u
         if both.any():
-            dl = (x - lower).abs()
-            du = (upper - x).abs()
-            at_l = (at_l & ~both) | (both & (dl <= du))
-            at_u = (at_u & ~both) | (both & (du < dl))
-
-        lam[at_l] = torch.clamp(g[at_l], min=0.0) # lambda^+ at lower bound
-        lam[at_u] = torch.clamp(g[at_u], max=0.0) # lamda^- at upper bound
+            at_l = torch.where(both, (x - lower).abs() <= (upper - x).abs(), at_l)
+            at_u = torch.where(both, (upper - x).abs() < (x - lower).abs(), at_u)
+        lam[at_l] = torch.clamp(g[at_l], min=0.0)
+        lam[at_u] = torch.clamp(g[at_u], max=0.0)
         return lam
 
     def sum_finite_products(values: torch.Tensor, multipliers: torch.Tensor) -> torch.Tensor:
@@ -302,9 +290,9 @@ def solve(
             x_ray = x_unscaled / primal_norm_inf
             primal_ray_obj = (c_orig @ x_ray).item()
             if primal_ray_obj < 0:
-                primal_residual_eq = torch.linalg.norm(A_orig @ x_ray, ord=float('inf')).item() if A_orig.shape[0] > 0 else 0.0
-                primal_residual_ineq = torch.linalg.norm(torch.clamp(-(G_orig @ x_ray), min=0.0), ord=float('inf')).item() if G_orig.shape[0] > 0 else 0.0
-                max_primal_residual = max(primal_residual_eq, primal_residual_ineq)
+                Kx = K_orig @ x_ray
+                residual_vec = torch.cat([torch.clamp(-Kx[:m1], min=0.0), Kx[m1:]])
+                max_primal_residual = torch.linalg.norm(residual_vec, ord=float('inf')).item()
                 relative_infeas = max_primal_residual / (-primal_ray_obj)
                 if relative_infeas < eps_dual_infeasible:
                     return "dual_infeasible", {
