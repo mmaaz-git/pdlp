@@ -322,6 +322,144 @@ def test_problem_8():
     return True
 
 
+def test_problem_9():
+    """
+    Test 9: Trivial case - no variables, feasible
+
+    No variables, constraints are h <= 0 and b = 0
+    Expected: optimal, obj = 0
+    """
+    print("\n" + "=" * 70)
+    print("TEST 9: Trivial case - no variables, feasible")
+    print("=" * 70)
+
+    G = torch.tensor([]).reshape(1, 0)
+    h = torch.tensor([0.0])  # 0 >= 0, feasible
+    A = torch.tensor([]).reshape(0, 0)
+    b = torch.tensor([])
+    c = torch.tensor([])
+    l = torch.tensor([])
+    u = torch.tensor([])
+
+    print("  No variables, constraint: 0 >= 0")
+    print("  Expected: optimal, obj = 0.0")
+
+    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=True)
+
+    print(f"\n  Status: {status}")
+    print(f"  {'PASS' if status == 'optimal' else 'FAIL'}")
+
+    return status == "optimal"
+
+
+def test_problem_10():
+    """
+    Test 10: Trivial case - no variables, infeasible
+
+    No variables, but constraints require h <= 0 which is violated
+    Expected: primal_infeasible with Farkas certificate
+    """
+    print("\n" + "=" * 70)
+    print("TEST 10: Trivial case - no variables, infeasible")
+    print("=" * 70)
+
+    G = torch.tensor([]).reshape(1, 0)
+    h = torch.tensor([1.0])  # need 0 >= 1, infeasible
+    A = torch.tensor([]).reshape(0, 0)
+    b = torch.tensor([])
+    c = torch.tensor([])
+    l = torch.tensor([])
+    u = torch.tensor([])
+
+    print("  No variables, constraint: 0 >= 1")
+    print("  Expected: PRIMAL INFEASIBLE")
+
+    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=True)
+
+    has_certificate = "ray" in info and "dual_ray_obj" in info
+    print(f"\n  Status: {status}")
+    print(f"  Certificate provided: {has_certificate}")
+    print(f"  {'PASS' if status == 'primal_infeasible' and has_certificate else 'FAIL'}")
+
+    return status == "primal_infeasible" and has_certificate
+
+
+def test_problem_11():
+    """
+    Test 11: Trivial case - no constraints, optimal
+
+    No constraints, all variables bounded
+    minimize 2*x1 + x2
+    0 <= x1, x2 <= 10
+    Expected: x* = [0, 0], obj = 0.0
+    """
+    print("\n" + "=" * 70)
+    print("TEST 11: Trivial case - no constraints, optimal")
+    print("=" * 70)
+
+    G = torch.tensor([]).reshape(0, 2)
+    h = torch.tensor([])
+    A = torch.tensor([]).reshape(0, 2)
+    b = torch.tensor([])
+    c = torch.tensor([2.0, 1.0])
+    l = torch.tensor([0.0, 0.0])
+    u = torch.tensor([10.0, 10.0])
+
+    print("  Objective: minimize 2*x1 + x2")
+    print("  No constraints")
+    print("  Bounds: 0 <= x1, x2 <= 10")
+    print("  Expected: x = [0.0, 0.0], obj = 0.0")
+
+    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=True)
+
+    expected = torch.tensor([0.0, 0.0])
+    error = torch.norm(x_sol - expected).item()
+    obj = (c @ x_sol).item()
+
+    print(f"\n  Solution: x = [{x_sol[0].item():.6f}, {x_sol[1].item():.6f}]")
+    print(f"  Objective: {obj:.6f}")
+    print(f"  Error: {error:.6e}")
+    print(f"  {'PASS' if status == 'optimal' and error < 0.01 else 'FAIL'}")
+
+    return status == "optimal" and error < 0.01
+
+
+def test_problem_12():
+    """
+    Test 12: Trivial case - no constraints, unbounded
+
+    No constraints, negative objective with unbounded variable
+    minimize -x1
+    x1, x2 >= 0, no upper bounds
+    Expected: DUAL INFEASIBLE (primal unbounded) with certificate
+    """
+    print("\n" + "=" * 70)
+    print("TEST 12: Trivial case - no constraints, unbounded")
+    print("=" * 70)
+
+    G = torch.tensor([]).reshape(0, 2)
+    h = torch.tensor([])
+    A = torch.tensor([]).reshape(0, 2)
+    b = torch.tensor([])
+    c = torch.tensor([-1.0, 0.0])
+    l = torch.tensor([0.0, 0.0])
+    u = torch.tensor([float('inf'), float('inf')])
+
+    print("  Objective: minimize -x1 (maximize x1)")
+    print("  No constraints")
+    print("  Bounds: x1, x2 >= 0, no upper bounds")
+    print("  Expected: DUAL INFEASIBLE (primal unbounded)")
+
+    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=True)
+
+    has_certificate = "ray" in info and "primal_ray_obj" in info
+    print(f"\n  Status: {status}")
+    print(f"  Certificate provided: {has_certificate}")
+    print(f"  {'PASS' if status == 'dual_infeasible' and has_certificate else 'FAIL'}")
+
+    return status == "dual_infeasible" and has_certificate
+
+
 if __name__ == "__main__":
     test_problem_1()
     test_problem_2()
@@ -331,3 +469,7 @@ if __name__ == "__main__":
     test_problem_6()
     test_problem_7()
     test_problem_8()
+    test_problem_9()
+    test_problem_10()
+    test_problem_11()
+    test_problem_12()
