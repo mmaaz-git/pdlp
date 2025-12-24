@@ -74,11 +74,11 @@ def solve(
     m2 = A.shape[0]
     m = m1 + m2
 
-    # Stack constraints: K = [G; A], q = [h; b]
+    # stack constraints: K = [G; A], q = [h; b]
     K = torch.cat([G, A], dim=0)
     q = torch.cat([h, b], dim=0)
 
-    # Save originals (for termination checks on original problem)
+    # save originals (for termination checks on original problem)
     G_orig, h_orig, A_orig, b_orig = G.clone(), h.clone(), A.clone(), b.clone()
     c_orig, l_orig, u_orig = c.clone(), l.clone(), u.clone()
     K_orig, q_orig = K.clone(), q.clone()
@@ -87,9 +87,7 @@ def solve(
     # Trivial cases: no variables or no constraints
     # -----------------------------
     if n == 0:
-        # No variables: check if constraints are satisfiable
-        # G x >= h becomes 0 >= h, so need h <= 0
-        # A x = b becomes 0 = b, so need b = 0
+        # no variables: check h <= 0 and b = 0 to be feasible
         feasible = torch.all(h <= eps_zero) and torch.all(b.abs() <= eps_zero)
         if feasible:
             if verbose:
@@ -107,9 +105,8 @@ def solve(
             return torch.zeros(0, device=device, dtype=dtype), torch.zeros(m, device=device, dtype=dtype), "primal_infeasible", {}
 
     if m == 0:
-        # No constraints means we just minimize c^T x subject to l <= x <= u
-        # If any c[i] < 0 and u[i] = inf, problem is unbounded
-        # Otherwise optimal is x[i] = l[i] if c[i] >= 0, x[i] = u[i] if c[i] < 0
+        # no constraints means if any c[i] < 0 and u[i] = inf, problem is unbounded
+        # otherwise optimal is x[i] = l[i] if c[i] >= 0, x[i] = u[i] if c[i] < 0
         unbounded = False
         x_sol = l.clone()
         for i in range(n):
@@ -165,9 +162,9 @@ def solve(
     # Pock-Chambolle rescaling (operator norm <= 1)
     if pock_chambolle_alpha > 0:
         alpha = pock_chambolle_alpha
-        # Column rescaling: sqrt(sum_i |K[i,j]|^(2-alpha))
+        # column rescaling: sqrt(sum_i |K[i,j]|^(2-alpha))
         col_rescale = torch.sqrt((K.abs() ** (2 - alpha)).sum(dim=0)).clamp_min(eps_zero)
-        # Row rescaling: sqrt(sum_j |K[i,j]|^alpha)
+        # row rescaling: sqrt(sum_j |K[i,j]|^alpha)
         row_rescale = torch.sqrt((K.abs() ** alpha).sum(dim=1)).clamp_min(eps_zero)
 
         # Apply rescaling
@@ -430,7 +427,6 @@ def solve(
     beta_artificial = 0.36 # used for artificial restart condition
 
     k_global = 0 # global step counter
-    converged = False
     status = ""
     info = {}
     x_unscaled_last, y_unscaled_last = x / variable_rescaling, y / constraint_rescaling
@@ -470,23 +466,25 @@ def solve(
 
             k_global += 1
 
-            # Check termination periodically (always check first 10 iters, then every frequency)
+            # check termination: first 10 iters, then every frequency
             if k_global <= 10 or k_global % termination_check_frequency == 0:
                 status, info = termination_criteria(x, y)
                 if status:
-                    # Ignore infeasibility detections before iteration 10 (early false positives)
+                    # ignore infeasibility detections before iteration 10 (early false positives)
                     if k_global < 10 and status in ["primal_infeasible", "dual_infeasible"]:
-                        status = ""  # Reset status, keep iterating
+                        status = "" # reset status, keep iterating
                     else:
-                        converged = (status == "optimal")
-                        break  # optimal or detected infeasibility after warm-up
+                        # save the iterate where we terminated
+                        x_unscaled_last = x / variable_rescaling
+                        y_unscaled_last = y / constraint_rescaling
+                        break # optimal or detected infeas/unbound after warm-up
 
             # check restart criteria
             cond_i  = (kkt_c_new <= (beta_sufficient**2) * kkt_last_restart) # sufficient progress made
             cond_ii = (kkt_c_new <= (beta_necessary**2) * kkt_last_restart) and (t > 0) and (kkt_c_new > kkt_c_prev) # necessary progress + stalling
             cond_iii = (t >= beta_artificial * k_global) # too many inner iterations
 
-            kkt_c_prev = kkt_c_new  # save for next iteration
+            kkt_c_prev = kkt_c_new # save for next iteration
 
             if cond_i or cond_ii or cond_iii:
                 x_c, y_c = x_c_new, y_c_new
@@ -494,8 +492,7 @@ def solve(
         else:
             x_c, y_c = x_c_new, y_c_new
 
-        # break out of outer loop if we have termination status (optimal or infeasibility after warm-up)
-        if status: break
+        if status: break # break out of loop if we have termination status
 
         # restart from candidate
         x, y = x_c, y_c
@@ -506,13 +503,11 @@ def solve(
         # store previous restart start
         x_prev, y_prev = x.clone(), y.clone()
 
-    # Use last saved unscaled values for return
-    x_orig = x_unscaled_last
-    y_orig = y_unscaled_last
+    # use last saved unscaled values for return
+    x_unscaled = x_unscaled_last
+    y_unscaled = y_unscaled_last
 
-    # Set status if not already set by termination_criteria
-    if not status:
-        status = "optimal" if converged else "max_iterations"
+    if not status: status = "max_iterations" # we hit max iters without a termination condition
 
     if verbose:
         if status == "primal_infeasible":
@@ -528,10 +523,10 @@ def solve(
             print(f"      c^T x < 0:  c^T x = {info['primal_ray_obj']:.3e}")
             print(f"      Relative certificate quality: {info['certificate_quality']:.3e}")
         elif status in ["optimal", "max_iterations"]:
-            status_msg = "converged" if converged else f"max iterations ({MAX_OUTER_ITERS})"
+            status_msg = "converged" if status == "optimal" else f"max iterations ({MAX_OUTER_ITERS})"
             print(f"\n  Status: {status_msg} after {k_global} total iterations")
             print(f"  Primal objective: {info['primal_obj']:.6e}")
             print(f"  Dual objective: {info['dual_obj']:.6e}")
             print(f"  Duality gap: {abs(info['primal_obj'] - info['dual_obj']):.6e}")
 
-    return x_orig, y_orig, status, info
+    return x_unscaled, y_unscaled, status, info
