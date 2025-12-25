@@ -104,14 +104,14 @@ def solve(
     if is_sparse:
         # Sparse implementations using scatter_reduce
         col_max = lambda M: torch.zeros(M.shape[1], dtype=M.dtype, device=M.device).scatter_reduce_(
-            0, (M_c := M.abs().coalesce()).indices()[1], M_c.values(), reduce='amax', include_self=False)
+            0, (M_c := M.abs().coalesce()).indices()[1], M_c.values(), reduce='amax', include_self=True)
         row_max = lambda M: torch.zeros(M.shape[0], dtype=M.dtype, device=M.device).scatter_reduce_(
-            0, (M_c := M.abs().coalesce()).indices()[0], M_c.values(), reduce='amax', include_self=False)
+            0, (M_c := M.abs().coalesce()).indices()[0], M_c.values(), reduce='amax', include_self=True)
         slice_rows = sparse_slice_rows
     else:
         # Dense implementations (original operations)
-        col_max = lambda M: M.abs().max(dim=0)[0]
-        row_max = lambda M: M.abs().max(dim=1)[0]
+        col_max = lambda M: M.max(dim=0)[0]
+        row_max = lambda M: M.max(dim=1)[0]
         slice_rows = lambda M, start, end: M[start:end, :]
 
     # -----------------------------
@@ -166,9 +166,9 @@ def solve(
     # Ruiz rescaling (L-infinity equilibration)
     for _ in range(ruiz_iterations):
         # column rescaling: sqrt(max(|K[:,j]|, |c[j]|))
-        col_rescale = torch.sqrt(torch.maximum(col_max(K), c.abs())).clamp_min(eps_zero)
+        col_rescale = torch.sqrt(torch.maximum(col_max(K.abs()), c.abs())).clamp_min(eps_zero)
         # row rescaling: sqrt(max(|K[i,:]|))
-        row_rescale = torch.sqrt(row_max(K)).clamp_min(eps_zero)
+        row_rescale = torch.sqrt(row_max(K.abs())).clamp_min(eps_zero)
 
         # apply rescaling
         c, l, u = c / col_rescale, l * col_rescale, u * col_rescale
