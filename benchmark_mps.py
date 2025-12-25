@@ -185,7 +185,7 @@ if __name__ == "__main__":
 
     # Run benchmarks
     results = []
-    time_limit = 600  # 10 minutes per problem
+    time_limit = 3600  # 1 hr per problem
 
     for url, compressed_file, desc in benchmarks:
         try:
