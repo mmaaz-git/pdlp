@@ -70,7 +70,7 @@ def solve(
     dtype = c.dtype
     is_sparse = G.is_sparse
     eps_zero = 1e-12
-    termination_check_frequency = 64 # check for termination every 64 steps
+    termination_check_frequency = 100 # how frequently to check for termination
     max_inner_iters = 1000 # max iterations between restarts
     max_backtrack = 50 # max backtracking steps in adaptive step size
 
@@ -462,13 +462,6 @@ def solve(
 
             n_iterations += 1
 
-            # verbose logging every 100 iterations
-            if verbose and n_iterations % 100 == 0:
-                x_unscaled, y_unscaled = x / variable_rescaling, y / constraint_rescaling
-                primal_obj = (c_orig @ x_unscaled).item()
-                dual_obj = compute_dual_objective(x_unscaled, y_unscaled).item()
-                print(f"  Iter {n_iterations:5d}: primal_obj = {primal_obj:+.6e}, dual_obj = {dual_obj:+.6e}, gap = {abs(primal_obj - dual_obj):.3e}, KKT = {torch.sqrt(kkt_current).item():.3e}")
-
             # check iteration and time limits
             if n_iterations >= iteration_limit:
                 status = "iteration_limit"
@@ -482,6 +475,8 @@ def solve(
             # check termination and restart: first 10 iters, then every frequency
             if n_iterations <= 10 or n_iterations % termination_check_frequency == 0:
                 status, info = termination_criteria(x, y)
+                if verbose:
+                    print(f"  Iter {n_iterations:5d}: primal_obj = {info['primal_obj']:+.6e}, dual_obj = {info['dual_obj']:+.6e}, gap = {abs(info['primal_obj'] - info['dual_obj']):.3e}, KKT = {torch.sqrt(kkt_current).item():.3e}")
                 if status:
                     # ignore infeasibility detections before iteration 10 (early false positives)
                     if n_iterations < 10 and status in ["primal_infeasible", "dual_infeasible"]:
