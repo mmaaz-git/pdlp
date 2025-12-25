@@ -156,7 +156,7 @@ def test_dense_vs_sparse_equivalence():
 
     # Solve with dense
     x_dense, y_dense, status_dense, info_dense = solve(
-        G_dense, A_dense, c, h, b, l, u,
+        c, G_dense, h, A_dense, b, l, u,
         iteration_limit=5000, verbose=False
     )
 
@@ -164,7 +164,7 @@ def test_dense_vs_sparse_equivalence():
     G_sparse = G_dense.to_sparse_coo()
     A_sparse = A_dense.to_sparse_coo()
     x_sparse, y_sparse, status_sparse, info_sparse = solve(
-        G_sparse, A_sparse, c, h, b, l, u,
+        c, G_sparse, h, A_sparse, b, l, u,
         iteration_limit=5000, verbose=False
     )
 
@@ -205,13 +205,13 @@ def test_very_sparse_matrices():
         G_sparse = G_dense.to_sparse_coo()
         A_sparse = A_dense.to_sparse_coo()
         x_sparse, y_sparse, status_sparse, info_sparse = solve(
-            G_sparse, A_sparse, c, h, b, l, u,
+            c, G_sparse, h, A_sparse, b, l, u,
             iteration_limit=10000, verbose=False
         )
 
         # Solve dense
         x_dense, y_dense, status_dense, info_dense = solve(
-            G_dense, A_dense, c, h, b, l, u,
+            c, G_dense, h, A_dense, b, l, u,
             iteration_limit=10000, verbose=False
         )
 
@@ -262,13 +262,13 @@ def test_structured_sparse():
     G_sparse = G.to_sparse_coo()
     A_sparse = A.to_sparse_coo()
     x_sparse, _, status_sparse, info_sparse = solve(
-        G_sparse, A_sparse, c, h, b, l, u,
+        c, G_sparse, h, A_sparse, b, l, u,
         iteration_limit=10000, verbose=False
     )
 
     # Solve with dense
     x_dense, _, status_dense, info_dense = solve(
-        G, A, c, h, b, l, u,
+        c, G, h, A, b, l, u,
         iteration_limit=10000, verbose=False
     )
 
@@ -302,12 +302,12 @@ def test_empty_constraint_rows():
     A_sparse = A_dense.to_sparse_coo()
 
     x_sparse, _, status_sparse, _ = solve(
-        G_sparse, A_sparse, c, h, b, l, u,
+        c, G_sparse, h, A_sparse, b, l, u,
         iteration_limit=10000, verbose=False
     )
 
     x_dense, _, status_dense, _ = solve(
-        G_dense, A_dense, c, h, b, l, u,
+        c, G_dense, h, A_dense, b, l, u,
         iteration_limit=10000, verbose=False
     )
 
@@ -330,7 +330,7 @@ def test_no_inequalities():
     u = torch.full((n,), 10.0)
 
     x, y, status, info = solve(
-        G_sparse, A_sparse, c, h, b, l, u,
+        c, G_sparse, h, A_sparse, b, l, u,
         iteration_limit=5000, verbose=False
     )
 
@@ -351,7 +351,7 @@ def test_no_equalities():
     u = torch.full((n,), 10.0)
 
     x, y, status, info = solve(
-        G_sparse, A_sparse, c, h, b, l, u,
+        c, G_sparse, h, A_sparse, b, l, u,
         iteration_limit=5000, verbose=False
     )
 

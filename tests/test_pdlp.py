@@ -26,7 +26,7 @@ def test_problem_1():
     l = torch.tensor([0.0, 0.0])
     u = torch.tensor([10.0, 10.0])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     expected = torch.tensor([1.0, 0.0])
     error = torch.norm(x_sol - expected).item()
@@ -51,7 +51,7 @@ def test_problem_2():
     l = torch.tensor([0.0, 0.0])
     u = torch.tensor([10.0, 10.0])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     expected = torch.tensor([0.0, 1.5])
     error = torch.norm(x_sol - expected).item()
@@ -82,7 +82,7 @@ def test_problem_3():
     l = torch.tensor([0.0, 0.0, 0.0])
     u = torch.tensor([10.0, 10.0, 10.0])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     expected_obj = 3.0
     obj = (c @ x_sol).item()
@@ -108,7 +108,7 @@ def test_problem_4():
     l = torch.tensor([0.0, -1e8])  # x2 unbounded (use large negative bound)
     u = torch.tensor([10.0, 1e8])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     expected = torch.tensor([0.0, 2.0])
     error = torch.norm(x_sol - expected).item()
@@ -133,7 +133,7 @@ def test_problem_5():
     l = torch.tensor([0.0, 0.0])
     u = torch.tensor([5.0, 5.0])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     expected = torch.tensor([5.0, 5.0])
     error = torch.norm(x_sol - expected).item()
@@ -159,7 +159,7 @@ def test_problem_6():
     l = torch.tensor([0.0, 0.0, 0.0])
     u = torch.tensor([10.0, 10.0, 10.0])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     expected = torch.tensor([5.0, 0.0, 0.0])
     error = torch.norm(x_sol - expected).item()
@@ -187,7 +187,7 @@ def test_problem_7():
     l = torch.tensor([0.0, 0.0])
     u = torch.tensor([10.0, 10.0])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False, iteration_limit=10000)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False, iteration_limit=10000)
 
     assert status in ["primal_infeasible", "iteration_limit"]
 
@@ -212,7 +212,7 @@ def test_problem_8():
     l = torch.tensor([0.0, 0.0])
     u = torch.tensor([float('inf'), float('inf')])  # truly unbounded
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False, iteration_limit=10000)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False, iteration_limit=10000)
 
     assert status in ["dual_infeasible", "iteration_limit"]
 
@@ -232,7 +232,7 @@ def test_problem_9():
     l = torch.tensor([])
     u = torch.tensor([])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     assert status == "optimal"
 
@@ -252,7 +252,7 @@ def test_problem_10():
     l = torch.tensor([])
     u = torch.tensor([])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     has_certificate = "ray" in info and "dual_ray_obj" in info
 
@@ -277,7 +277,7 @@ def test_problem_11():
     l = torch.tensor([0.0, 0.0])
     u = torch.tensor([10.0, 10.0])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     expected = torch.tensor([0.0, 0.0])
     error = torch.norm(x_sol - expected).item()
@@ -303,7 +303,7 @@ def test_problem_12():
     l = torch.tensor([0.0, 0.0])
     u = torch.tensor([float('inf'), float('inf')])
 
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=False)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=False)
 
     has_certificate = "ray" in info and "primal_ray_obj" in info
 
@@ -383,7 +383,7 @@ def test_problem_13():
     u = torch.ones(n_vars) * float('inf')
 
     # With float64, the default eps_tol=1e-6 works well
-    x_sol, y_sol, status, info = solve(G, A, c, h, b, l, u, verbose=True)
+    x_sol, y_sol, status, info = solve(c, G, h, A, b, l, u, verbose=True)
 
     # Reshape solution back to matrix form
     x_matrix = x_sol.reshape(n_suppliers, n_customers)
