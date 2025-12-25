@@ -93,32 +93,21 @@ def solve(
     K_orig = torch.cat([G_orig, A_orig], dim=0)
     q_orig = torch.cat([h_orig, b_orig], dim=0)
 
-    # Helper function for sparse tensor row slicing
-    def sparse_slice_rows(M, start_row, end_row):
-        """Slice rows [start_row:end_row) from sparse COO tensor"""
+    def slice_rows(M, start, end):
+        if not is_sparse: return M[start:end, :]
         M = M.coalesce()
         indices, values = M.indices(), M.values()
-        mask = (indices[0] >= start_row) & (indices[0] < end_row)
+        mask = (indices[0] >= start) & (indices[0] < end)
         new_indices = indices[:, mask].clone()
-        new_indices[0] -= start_row # adjust row indices to start from 0
-        new_values = values[mask]
-        return torch.sparse_coo_tensor(new_indices, new_values, (end_row - start_row, M.shape[1]),
-            dtype=M.dtype, device=M.device
-        )
+        new_indices[0] -= start
+        return torch.sparse_coo_tensor(new_indices, values[mask], (end-start, M.shape[1]), dtype=M.dtype, device=M.device)
 
-    # Define operation lambdas based on whether K is sparse
     if is_sparse:
-        # Sparse implementations using scatter_reduce
-        col_max = lambda M: torch.zeros(M.shape[1], dtype=M.dtype, device=M.device).scatter_reduce_(
-            0, (M_c := M.abs().coalesce()).indices()[1], M_c.values(), reduce='amax', include_self=True)
-        row_max = lambda M: torch.zeros(M.shape[0], dtype=M.dtype, device=M.device).scatter_reduce_(
-            0, (M_c := M.abs().coalesce()).indices()[0], M_c.values(), reduce='amax', include_self=True)
-        slice_rows = sparse_slice_rows
+        col_max = lambda M: torch.zeros(M.shape[1], dtype=M.dtype, device=M.device).scatter_reduce_(0, (M_c := M.abs().coalesce()).indices()[1], M_c.values(), reduce='amax', include_self=True)
+        row_max = lambda M: torch.zeros(M.shape[0], dtype=M.dtype, device=M.device).scatter_reduce_(0, (M_c := M.abs().coalesce()).indices()[0], M_c.values(), reduce='amax', include_self=True)
     else:
-        # Dense implementations (original operations)
         col_max = lambda M: M.max(dim=0)[0]
         row_max = lambda M: M.max(dim=1)[0]
-        slice_rows = lambda M, start, end: M[start:end, :]
 
     # -----------------------------
     # Trivial cases: no variables or no constraints
