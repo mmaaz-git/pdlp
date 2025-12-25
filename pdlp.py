@@ -125,8 +125,7 @@ def solve(
     # -----------------------------
     if n == 0:
         # no variables: check h <= 0 and b = 0 to be feasible
-        feasible = torch.all(h <= eps_zero) and torch.all(b.abs() <= eps_zero)
-        if feasible:
+        if torch.all(h <= eps_zero) and torch.all(b.abs() <= eps_zero):
             info = {"primal_obj": 0.0, "dual_obj": 0.0, "solve_time_sec": time.time()-start_time, "iterations": 0}
             if verbose: print(f"\n  Status: converged (trivial, no variables) in {info['solve_time_sec']:.6f}s\n  Primal objective: 0.000000e+00")
             return torch.zeros(0, device=device, dtype=dtype), torch.zeros(m, device=device, dtype=dtype), "optimal", info
