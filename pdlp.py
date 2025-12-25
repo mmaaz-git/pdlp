@@ -8,7 +8,7 @@ def solve(
     l: torch.Tensor, u: torch.Tensor,
     iteration_limit: int | float = 10000,
     time_sec_limit: float = float('inf'),
-    primal_weight_update_smoothing: float = 0.3,
+    primal_weight_update_smoothing: float = 0.5,
     ruiz_iterations: int = 10,
     pock_chambolle_alpha: float = 1.0,
     eps_tol: float = 1e-6,
