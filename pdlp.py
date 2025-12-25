@@ -506,27 +506,13 @@ def solve(
         # store previous restart start
         x_prev, y_prev = x.clone(), y.clone()
 
-    # compute metrics for all cases
-    total_time = time.time() - start_time
-    info['solve_time_sec'] = total_time
-    info['iterations'] = n_iterations
-
-    # for optimal/iteration_limit/time_limit, add detailed metrics
+    info.update({'solve_time_sec': time.time() - start_time, 'iterations': n_iterations})
     if status in ["optimal", "iteration_limit", "time_limit"]:
-        # Compute KKT error squared at final iterate
         info['kkt_error_sq'] = kkt_error_sq(x, y, w).item()
-
-        # Compute primal residual (feasibility violation)
-        r_eq = b_orig - (A_orig @ x_unscaled_last)
-        r_ineq = torch.clamp(h_orig - (G_orig @ x_unscaled_last), min=0.0)
+        r_eq, r_ineq = b_orig - (A_orig @ x_unscaled_last), torch.clamp(h_orig - (G_orig @ x_unscaled_last), min=0.0)
         info['primal_residual'] = torch.sqrt((r_eq @ r_eq) + (r_ineq @ r_ineq)).item()
-
-        # Compute dual residual (stationarity violation)
         g_orig = c_orig - (K_orig.T @ y_unscaled_last)
-        lam = compute_lambda_for_box(x_unscaled_last, g_orig, l_orig, u_orig)
-        info['dual_residual'] = torch.linalg.norm(g_orig - lam).item()
-
-        # Compute duality gap metrics
+        info['dual_residual'] = torch.linalg.norm(g_orig - compute_lambda_for_box(x_unscaled_last, g_orig, l_orig, u_orig)).item()
         info['duality_gap'] = abs(info['primal_obj'] - info['dual_obj'])
         info['relative_gap'] = info['duality_gap'] / (1.0 + abs(info['primal_obj']) + abs(info['dual_obj']))
 
