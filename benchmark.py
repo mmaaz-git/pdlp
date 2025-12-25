@@ -76,10 +76,10 @@ def create_transportation_problem(n_suppliers, n_customers, sparse=False):
         )
         h_demand = demand
 
-        G = torch.cat([G_supply, G_demand], dim=0)
+        G = torch.cat([G_supply, G_demand], dim=0).to_sparse_csr()
         h = torch.cat([h_supply, h_demand])
 
-        A = torch.zeros(0, n_vars).to_sparse_coo()
+        A = torch.zeros(0, n_vars).to_sparse_csr()
         b = torch.tensor([])
     else:
         # Build dense constraint matrices (original code)
