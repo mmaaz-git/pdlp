@@ -6,7 +6,7 @@ def solve(
     G: torch.Tensor, h: torch.Tensor,
     A: torch.Tensor, b: torch.Tensor,
     l: torch.Tensor, u: torch.Tensor,
-    iteration_limit: int = 10000,
+    iteration_limit: int | float = 10000,
     time_sec_limit: float = float('inf'),
     primal_weight_update_smoothing: float = 0.3,
     ruiz_iterations: int = 10,
@@ -33,8 +33,8 @@ def solve(
         b: Equality constraint right-hand side (m2,)
         l: Variable lower bounds (n,) - use -inf for unbounded
         u: Variable upper bounds (n,) - use +inf for unbounded
-        iteration_limit: Maximum number of PDHG iterations (default 10000)
-        time_sec_limit: Maximum solve time in seconds (default infinite)
+        iteration_limit: Maximum number of PDHG iterations (default 10000, use float('inf') for unlimited)
+        time_sec_limit: Maximum solve time in seconds (default float('inf') for unlimited)
         primal_weight_update_smoothing: Smoothing factor for primal weight updates (0-1)
         ruiz_iterations: Number of Ruiz equilibration iterations
         pock_chambolle_alpha: Pock-Chambolle rescaling parameter (0 = disable)

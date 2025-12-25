@@ -139,20 +139,20 @@ def benchmark(device_name, n_suppliers, n_customers, n_runs=2, sparse=False):
     l = l.to(device)
     u = u.to(device)
 
-    # Scale max iterations with problem size (roughly sqrt(n))
-    # But cap at reasonable values for benchmarking
-    max_iters = max(100, min(500, int(200 * (n_vars / 150) ** 0.5)))
+    # Use time limit for benchmarking (10 minutes per run)
+    time_limit_sec = 600  # 10 minutes
+    max_iters = float('inf')  # No iteration limit, only time limit
 
     # Use practical tolerance for benchmarking (1e-4 achieves ~1e-5 relative gap)
     # Julia default is 1e-6 but requires more iterations for larger problems
     eps_tol = 1e-4
 
-    print(f"Max iterations: {max_iters}, tolerance: {eps_tol:.0e}")
+    print(f"Time limit: {time_limit_sec}s ({time_limit_sec/60:.0f} min), tolerance: {eps_tol:.0e}")
 
     # Warmup
     if device.type == 'cuda':
         print("Warming up GPU...")
-        x, y, status, info = solve(G, A, c, h, b, l, u, verbose=False, MAX_OUTER_ITERS=max_iters, eps_tol=eps_tol)
+        x, y, status, info = solve(c, G, h, A, b, l, u, verbose=True, iteration_limit=max_iters, time_sec_limit=time_limit_sec, eps_tol=eps_tol)
         torch.cuda.synchronize()
 
     times = []
@@ -160,8 +160,9 @@ def benchmark(device_name, n_suppliers, n_customers, n_runs=2, sparse=False):
         if device.type == 'cuda':
             torch.cuda.synchronize()
 
+        print(f"\n--- Run {run+1}/{n_runs} ---")
         start = time.time()
-        x, y, status, info = solve(G, A, c, h, b, l, u, verbose=False, MAX_OUTER_ITERS=max_iters, eps_tol=eps_tol)
+        x, y, status, info = solve(c, G, h, A, b, l, u, verbose=True, iteration_limit=max_iters, time_sec_limit=time_limit_sec, eps_tol=eps_tol)
 
         if device.type == 'cuda':
             torch.cuda.synchronize()
@@ -169,18 +170,19 @@ def benchmark(device_name, n_suppliers, n_customers, n_runs=2, sparse=False):
         elapsed = time.time() - start
         times.append(elapsed)
 
-        if status in ["optimal", "max_iterations"]:
+        if status in ["optimal", "iteration_limit", "time_limit"]:
             gap = abs(info['primal_obj'] - info['dual_obj'])
-            print(f"  Run {run+1}: {elapsed:.3f}s - {status} (gap: {gap:.3e})")
+            print(f"  Run {run+1}: {elapsed:.3f}s - {status} (gap: {gap:.3e}, iters: {info['iterations']})")
         else:
             print(f"  Run {run+1}: {elapsed:.3f}s - {status}")
 
     avg_time = sum(times) / len(times)
     print(f"\nAverage: {avg_time:.3f}s")
-    if status in ["optimal", "max_iterations"]:
+    if status in ["optimal", "iteration_limit", "time_limit"]:
         print(f"Primal obj: {info['primal_obj']:.2f}")
         print(f"Dual obj: {info['dual_obj']:.2f}")
         print(f"Final gap: {abs(info['primal_obj'] - info['dual_obj']):.3e}")
+        print(f"Total iterations: {info['iterations']}")
     else:
         print(f"Status: {status}")
 
@@ -248,14 +250,16 @@ if __name__ == "__main__":
     print("\n\n" + "="*60)
     print("SUMMARY")
     print("="*60)
-    print(f"{'Problem':<12} {'CPU (s)':<12} {'GPU (s)':<12} {'Speedup':<12}")
-    print("-"*60)
+    print(f"{'Problem':<20} {'Format':<10} {'CPU (s)':<12} {'GPU (s)':<12} {'Speedup':<12}")
+    print("-"*70)
 
-    for label, cpu_time, gpu_time, speedup in results:
-        if gpu_time is not None:
-            print(f"{label:<12} {cpu_time:<12.3f} {gpu_time:<12.3f} {speedup:<12.2f}x")
+    for label, format_str, cpu_time, gpu_time, speedup in results:
+        if gpu_time is not None and cpu_time is not None:
+            print(f"{label:<20} {format_str:<10} {cpu_time:<12.3f} {gpu_time:<12.3f} {speedup:<12.2f}x")
+        elif gpu_time is not None:
+            print(f"{label:<20} {format_str:<10} {'N/A':<12} {gpu_time:<12.3f} {'N/A':<12}")
         else:
-            print(f"{label:<12} {cpu_time:<12.3f} {'N/A':<12} {'N/A':<12}")
+            print(f"{label:<20} {format_str:<10} {cpu_time:<12.3f} {'N/A':<12} {'N/A':<12}")
 
     if torch.cuda.is_available():
         print("\n✓ GPU benchmarking complete!")
