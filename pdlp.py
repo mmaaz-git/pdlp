@@ -73,7 +73,6 @@ def solve(
     max_inner_iters = 1000 # max iterations between restarts
     max_backtrack = 50 # max backtracking steps in adaptive step size
 
-    # track time for time limit
     start_time = time.time()
 
     m1, n = G.shape
@@ -128,15 +127,15 @@ def solve(
         # no variables: check h <= 0 and b = 0 to be feasible
         feasible = torch.all(h <= eps_zero) and torch.all(b.abs() <= eps_zero)
         if feasible:
-            info = {"primal_obj": 0.0, "dual_obj": 0.0}
-            if verbose: print(f"\n  Status: converged (trivial, no variables)\n  Primal objective: 0.000000e+00")
+            info = {"primal_obj": 0.0, "dual_obj": 0.0, "solve_time_sec": time.time()-start_time, "iterations": 0}
+            if verbose: print(f"\n  Status: converged (trivial, no variables) in {info['solve_time_sec']:.6f}s\n  Primal objective: 0.000000e+00")
             return torch.zeros(0, device=device, dtype=dtype), torch.zeros(m, device=device, dtype=dtype), "optimal", info
         # Construct Farkas certificate: y with violations
         y_ray = torch.cat([torch.where(h > eps_zero, 1.0, 0.0), torch.where(b.abs() > eps_zero, 1.0, 0.0)])
         y_ray = y_ray / torch.linalg.norm(y_ray, ord=float('inf')).clamp_min(eps_zero)
-        info = {"ray": y_ray, "dual_ray_obj": (q_orig @ y_ray).item(), "dual_residual": 0.0, "certificate_quality": 0.0}
+        info = {"ray": y_ray, "dual_ray_obj": (q_orig @ y_ray).item(), "dual_residual": 0.0, "certificate_quality": 0.0, "solve_time_sec": time.time()-start_time, "iterations": 0}
         if verbose:
-            print(f"\n  Status: PRIMAL INFEASIBLE")
+            print(f"\n  Status: PRIMAL INFEASIBLE after 0 iterations in {info['solve_time_sec']:.3f}s")
             print(f"    Farkas certificate (dual ray): y = {info['ray']}")
             print(f"      K^T y ≈ 0:  ||K^T y|| = {info['dual_residual']:.3e}")
             print(f"      q^T y > 0:  q^T y = {info['dual_ray_obj']:.3e}")
@@ -151,17 +150,17 @@ def solve(
             idx = torch.where(unbounded_mask)[0][0]
             x_ray = torch.zeros(n, device=device, dtype=dtype)
             x_ray[idx] = 1.0 if c[idx] < 0 else -1.0
-            info = {"ray": x_ray, "primal_ray_obj": (c_orig @ x_ray).item(), "max_primal_residual": 0.0, "certificate_quality": 0.0}
+            info = {"ray": x_ray, "primal_ray_obj": (c_orig @ x_ray).item(), "max_primal_residual": 0.0, "certificate_quality": 0.0, "solve_time_sec": time.time() - start_time, "iterations": 0}
             if verbose:
-                print(f"\n  Status: DUAL INFEASIBLE (primal unbounded)")
+                print(f"\n  Status: DUAL INFEASIBLE (primal unbounded) after 0 iterations in {info['solve_time_sec']:.3f}s")
                 print(f"    Unboundedness certificate (primal ray): x = {info['ray']}")
                 print(f"      K x ≈ 0:  max_residual = {info['max_primal_residual']:.3e}")
                 print(f"      c^T x < 0:  c^T x = {info['primal_ray_obj']:.3e}")
                 print(f"      Relative certificate quality: {info['certificate_quality']:.3e}")
             return x_sol, torch.zeros(0, device=device, dtype=dtype), "dual_infeasible", info
         obj = (c_orig @ x_sol).item()
-        info = {"primal_obj": obj, "dual_obj": obj}
-        if verbose: print(f"\n  Status: converged (trivial, no constraints)\n  Primal objective: {obj:.6e}")
+        info = {"primal_obj": obj, "dual_obj": obj, "solve_time_sec": time.time()-start_time, "iterations": 0}
+        if verbose: print(f"\n  Status: converged (trivial, no constraints) in {info['solve_time_sec']:.6f}s\n  Primal objective: {obj:.6e}")
         return x_sol, torch.zeros(0, device=device, dtype=dtype), "optimal", info
 
     # -----------------------------
@@ -545,13 +544,13 @@ def solve(
 
     if verbose:
         if status == "primal_infeasible":
-            print(f"\n  Status: PRIMAL INFEASIBLE")
+            print(f"\n  Status: PRIMAL INFEASIBLE after {n_iterations} iterations in {info['solve_time_sec']:.3f}s")
             print(f"    Farkas certificate (dual ray): y = {info['ray']}")
             print(f"      K^T y ≈ 0:  ||K^T y|| = {info['dual_residual']:.3e}")
             print(f"      q^T y > 0:  q^T y = {info['dual_ray_obj']:.3e}")
             print(f"      Relative certificate quality: {info['certificate_quality']:.3e}")
         elif status == "dual_infeasible":
-            print(f"\n  Status: DUAL INFEASIBLE (primal unbounded)")
+            print(f"\n  Status: DUAL INFEASIBLE (primal unbounded) after {n_iterations} iterations in {info['solve_time_sec']:.3f}s")
             print(f"    Unboundedness certificate (primal ray): x = {info['ray']}")
             print(f"      K x ≈ 0:  max_residual = {info['max_primal_residual']:.3e}")
             print(f"      c^T x < 0:  c^T x = {info['primal_ray_obj']:.3e}")
