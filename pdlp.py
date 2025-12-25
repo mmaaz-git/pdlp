@@ -161,9 +161,13 @@ def solve(
     # Ruiz rescaling (L-infinity equilibration)
     for _ in range(ruiz_iterations):
         # column rescaling: sqrt(max(|K[:,j]|, |c[j]|))
-        col_rescale = torch.sqrt(torch.maximum(col_max(K.abs()), c.abs())).clamp_min(eps_zero)
+        col_max_vals = torch.maximum(col_max(K.abs()), c.abs())
+        col_rescale = torch.sqrt(col_max_vals)
+        col_rescale = torch.where(col_max_vals > eps_zero, col_rescale.clamp_min(eps_zero), torch.ones_like(col_rescale)) # scale 1 if all 0's
         # row rescaling: sqrt(max(|K[i,:]|))
-        row_rescale = torch.sqrt(row_max(K.abs())).clamp_min(eps_zero)
+        row_max_vals = row_max(K.abs())
+        row_rescale = torch.sqrt(row_max_vals)
+        row_rescale = torch.where(row_max_vals > eps_zero, row_rescale.clamp_min(eps_zero), torch.ones_like(row_rescale))
 
         # apply rescaling
         c, l, u = c / col_rescale, l * col_rescale, u * col_rescale
@@ -176,11 +180,15 @@ def solve(
     # Pock-Chambolle rescaling (operator norm <= 1)
     if pock_chambolle_alpha > 0:
         # column rescaling: sqrt(sum_i |K[i,j]|^(2-alpha))
-        col_rescale = (K.abs() ** (2 - pock_chambolle_alpha)).sum(dim=0)
-        col_rescale = torch.sqrt(col_rescale.to_dense() if is_sparse else col_rescale).clamp_min(eps_zero)
+        col_sum = (K.abs() ** (2 - pock_chambolle_alpha)).sum(dim=0)
+        col_sum = col_sum.to_dense() if is_sparse else col_sum
+        col_rescale = torch.sqrt(col_sum)
+        col_rescale = torch.where(col_sum > eps_zero, col_rescale.clamp_min(eps_zero), torch.ones_like(col_rescale)) # scale 1 if all 0s
         # row rescaling: sqrt(sum_j |K[i,j]|^alpha)
-        row_rescale = (K.abs() ** pock_chambolle_alpha).sum(dim=1)
-        row_rescale = torch.sqrt(row_rescale.to_dense() if is_sparse else row_rescale).clamp_min(eps_zero)
+        row_sum = (K.abs() ** pock_chambolle_alpha).sum(dim=1)
+        row_sum = row_sum.to_dense() if is_sparse else row_sum
+        row_rescale = torch.sqrt(row_sum)
+        row_rescale = torch.where(row_sum > eps_zero, row_rescale.clamp_min(eps_zero), torch.ones_like(row_rescale))
 
         # apply rescaling
         c, l, u = c / col_rescale, l * col_rescale, u * col_rescale
@@ -255,7 +263,7 @@ def solve(
         l_term = sum_finite_products(l_orig, lam_pos)
         u_term = sum_finite_products(u_orig, lam_neg)
 
-        return (q_orig @ y) + l_term - u_term
+        return q_orig @ y + l_term - u_term
 
     @torch.no_grad()
     def kkt_error_sq(x: torch.Tensor, y: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
@@ -334,7 +342,7 @@ def solve(
         # condition (1): relative duality gap: |primal_obj - dual_obj| / (1 + |primal_obj| + |dual_obj|)
         gap_num = torch.abs(dual_obj - primal_obj)
         gap_den = 1.0 + torch.abs(dual_obj) + torch.abs(primal_obj)
-        gap_ok = gap_ok = gap_num <= eps_tol * (1.0 + torch.abs(dual_obj) + torch.abs(primal_obj))
+        gap_ok = gap_num <= eps_tol * (1.0 + torch.abs(dual_obj) + torch.abs(primal_obj))
 
         # condition (2): primal feasibility
         r_eq = b_orig - (A_orig @ x_unscaled)
@@ -371,7 +379,7 @@ def solve(
         fac2 = 1.0 + (kp1 ** -0.6)
 
         for _ in range(max_backtrack):
-            x_p = proj_X(x - (eta / w) * (c - (K.T @ y)))
+            x_p = proj_X(x - (eta / w) * (c - K.T @ y))
             y_p = proj_Y(y + (eta * w) * (q - K @ (2.0 * x_p - x)))
 
             dx = x_p - x
