@@ -50,10 +50,10 @@ def solve(
         info: Dict with solve statistics.
             - Always contains: solve_time_sec, iterations
             - For optimal/iteration_limit/time_limit also contains:
-                primal_obj, dual_obj, duality_gap, relative_gap
+                primal_obj, dual_obj, duality_gap, relative_gap,
                 primal_residual, dual_residual, kkt_error_sq
             - For primal_infeasible/dual_infeasible also contains:
-                ray, certificate_quality ray
+                ray, certificate_quality
     """
     # -----------------------------
     # Shape checks / setup
@@ -64,6 +64,7 @@ def solve(
     assert A.shape[0] == b.shape[0]
     assert G.shape[1] == A.shape[1] == c.shape[0] == l.shape[0] == u.shape[0]
     assert G.is_sparse == A.is_sparse, "G and A must both be sparse or both be dense"
+    assert not (iteration_limit == float('inf') and time_sec_limit == float('inf')), "At least one of iteration_limit or time_sec_limit must be finite"
 
     device = c.device
     dtype = c.dtype
