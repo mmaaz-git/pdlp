@@ -4,3 +4,4 @@ __pycache__/
 *.mps
 *.bz2
 .pytest_cache/
+.DS_Store
