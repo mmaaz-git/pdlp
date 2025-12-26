@@ -73,6 +73,7 @@ def solve(
     termination_check_frequency = 50 # how frequently to check for termination
     max_inner_iters = 1000 # max iterations between restarts
     max_backtrack = 50 # max backtracking steps in adaptive step size
+    max_step_size = 1e6 # maximum step size to prevent divergence
 
     start_time = time.time()
 
@@ -319,6 +320,11 @@ def solve(
         """
         x_unscaled, y_unscaled = x_scaled / variable_rescaling, y_scaled / constraint_rescaling
 
+        # compute objectives early so they're available in all return paths
+        if KT_orig_y is None: KT_orig_y = K_orig.T @ y_unscaled
+        dual_obj = compute_dual_objective(x_unscaled, y_unscaled, KTy_orig=KT_orig_y)
+        primal_obj = c_orig @ x_unscaled
+
         # Check for primal infeasibility (Farkas certificate via dual ray)
         dual_norm_inf = torch.linalg.norm(y_unscaled, ord=float('inf'))
         if dual_norm_inf > eps_zero:
@@ -333,6 +339,8 @@ def solve(
                         "certificate_quality": relative_infeas,
                         "dual_ray_obj": dual_ray_obj,
                         "dual_residual": dual_residual,
+                        "primal_obj": primal_obj.item(),
+                        "dual_obj": dual_obj.item(),
                     }
 
         # Check for dual infeasibility (primal unbounded via primal ray)
@@ -351,11 +359,9 @@ def solve(
                         "certificate_quality": relative_infeas,
                         "primal_ray_obj": primal_ray_obj,
                         "max_primal_residual": max_primal_residual,
+                        "primal_obj": primal_obj.item(),
+                        "dual_obj": dual_obj.item(),
                     }
-
-        if KT_orig_y is None: KT_orig_y = K_orig.T @ y_unscaled
-        dual_obj = compute_dual_objective(x_unscaled, y_unscaled, KTy_orig=KT_orig_y)
-        primal_obj = c_orig @ x_unscaled
 
         # condition (1): relative duality gap: |primal_obj - dual_obj| / (1 + |primal_obj| + |dual_obj|)
         gap_num = torch.abs(dual_obj - primal_obj)
@@ -407,9 +413,15 @@ def solve(
 
             num = w * (dx @ dx) + (dy @ dy) / w
             denom = 2 * torch.abs(dy @ K @ dx)
-            bar_eta = torch.tensor(float("inf"), device=dx.device, dtype=dx.dtype) if denom <= eps_zero else num / denom
 
-            eta_p = torch.minimum(fac1 * bar_eta, fac2 * eta).clamp_min(eps_zero)
+            # Compute bar_eta with upper bound to prevent divergence
+            if denom <= eps_zero:
+                bar_eta = torch.as_tensor(max_step_size, device=dx.device, dtype=dx.dtype)
+            else:
+                bar_eta_value = num / denom
+                bar_eta = torch.clamp(bar_eta_value, max=max_step_size)
+
+            eta_p = torch.minimum(fac1 * bar_eta, fac2 * eta).clamp_min(eps_zero).clamp_max(max_step_size)
 
             if eta <= bar_eta:
                 return x_p, y_p, eta, eta_p
