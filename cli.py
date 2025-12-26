@@ -323,7 +323,7 @@ Modeling language integration:
     parser.add_argument(
         '--tolerance', '--eps', '-e',
         type=float,
-        default=1e-6,
+        default=1e-4,
         help='Convergence tolerance (default: 1e-4)'
     )
 
