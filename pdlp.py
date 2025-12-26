@@ -423,7 +423,7 @@ def solve(
                 return x_p, y_p, eta, eta_p
             eta = eta_p
 
-        return x_p, y_p, eta, eta
+        return x_p, y_p, eta, eta_p
 
     # -----------------------------
     # Main Algorithm
