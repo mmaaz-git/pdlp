@@ -177,9 +177,6 @@ if __name__ == "__main__":
         # Large problems (100K - 1M rows)
         ("https://plato.asu.edu/ftp/lptestset/neos-3025225.mps.bz2", "neos-3025225.mps.bz2", "neos-3025225", 91572, 69846, 9357951),
         ("https://plato.asu.edu/ftp/lptestset/rmine15.mps.bz2", "rmine15.mps.bz2", "rmine15", 358395, 42438, 879732),
-
-        # Very large problems (> 1M rows)
-        ("https://plato.asu.edu/ftp/lptestset/dlr1.mps.bz2", "dlr1.mps.bz2", "dlr1", 1735470, 9121907, 18365107),
     ]
 
     print("\nAvailable benchmarks:")
