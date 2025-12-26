@@ -444,7 +444,7 @@ def solve(
 
     # initial weight
     c_norm, q_norm = torch.linalg.norm(c), torch.linalg.norm(q)
-    w = c / q if c_norm > eps_zero and q_norm > eps_zero else 1
+    w = c_norm / q_norm if c_norm > eps_zero and q_norm > eps_zero else 1
 
     x, y = x0.clone(), y0.clone() # current iterate
     x_prev, y_prev = x.clone(), y.clone() # past iterate
