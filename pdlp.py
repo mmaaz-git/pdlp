@@ -280,7 +280,7 @@ def solve(
         # primal residuals
         if Gx is None: Gx = G @ x
         if Ax is None: Ax = A @ x
-        r_eq = b - Ax
+        r_eq = Ax - b
         r_ineq = torch.clamp(h - Gx, min=0.0)
         term1 = (w**2) * (r_eq @ r_eq + r_ineq @ r_ineq)
 
