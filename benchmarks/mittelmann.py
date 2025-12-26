@@ -188,7 +188,7 @@ if __name__ == "__main__":
 
     # Run benchmarks on both CPU and GPU
     results = []
-    time_limit = 600  # 10 min per problem per device
+    time_limit = 3600  # 1hr per problem per device
 
     for url, compressed_file, name, rows, cols, nnz in benchmarks:
         try:
