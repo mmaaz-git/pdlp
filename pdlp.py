@@ -454,12 +454,6 @@ def solve(
             x_bar = x_bar + alpha * (x - x_bar)
             y_bar = y_bar + alpha * (y - y_bar)
 
-            # choose restart candidate: choose one with lower KKT
-            kkt_current = kkt_error_sq(x, y, w)
-            kkt_averaged = kkt_error_sq(x_bar, y_bar, w)
-            x_c_new, y_c_new = (x, y) if (kkt_current < kkt_averaged) else (x_bar, y_bar)
-            kkt_c_new = kkt_current if (kkt_current < kkt_averaged) else kkt_averaged
-
             n_iterations += 1
 
             # check iteration and time limits
@@ -474,6 +468,12 @@ def solve(
 
             # check termination and restart: first 10 iters, then every frequency
             if n_iterations <= 10 or n_iterations % termination_check_frequency == 0:
+                # choose restart candidate: choose one with lower KKT
+                kkt_current = kkt_error_sq(x, y, w)
+                kkt_averaged = kkt_error_sq(x_bar, y_bar, w)
+                x_c_new, y_c_new = (x, y) if (kkt_current < kkt_averaged) else (x_bar, y_bar)
+                kkt_c_new = kkt_current if (kkt_current < kkt_averaged) else kkt_averaged
+
                 status, info = termination_criteria(x, y)
                 if verbose:
                     print(f"  Iter {n_iterations:5d}: primal_obj = {info['primal_obj']:+.6e}, dual_obj = {info['dual_obj']:+.6e}, gap = {abs(info['primal_obj'] - info['dual_obj']):.3e}, KKT = {torch.sqrt(kkt_current).item():.3e}")
@@ -495,7 +495,7 @@ def solve(
                     x_c, y_c = x_c_new, y_c_new
                     break
 
-            kkt_c_prev = kkt_c_new # save for next iteration
+                kkt_c_prev = kkt_c_new # save for next iteration
         else:
             x_c, y_c = x_c_new, y_c_new
 
