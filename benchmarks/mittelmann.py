@@ -163,19 +163,22 @@ if __name__ == "__main__":
         device = 'cpu'
 
     # Mittelmann benchmark problems from https://plato.asu.edu/ftp/lpopt.html
-    # Format: (url, compressed_filename, description, rows, cols, nnz)
+    # All problems verified to exist on server and be listed in benchmark table
+    # Format: (url, compressed_filename, name, rows, cols, nnz)
     benchmarks = [
-        # Small problems
+        # Small problems (< 10K rows)
         ("https://plato.asu.edu/ftp/lptestset/qap15.mps.bz2", "qap15.mps.bz2", "qap15", 6331, 22275, 110700),
-        ("https://plato.asu.edu/ftp/lptestset/neos3.mps.bz2", "neos3.mps.bz2", "neos3", 512209, 6624, 1542816),
 
-        # Medium problems
-        ("https://plato.asu.edu/ftp/lptestset/rail02.mps.bz2", "rail02.mps.bz2", "rail02", 95791, 270869, 756228),
-        ("https://plato.asu.edu/ftp/lptestset/irish-e.mps.bz2", "irish-e.mps.bz2", "irish-e", 104260, 61728, 538809),
-        ("https://plato.asu.edu/ftp/lptestset/pds-100.mps.bz2", "pds-100.mps.bz2", "pds-100", 156244, 505360, 1390539),
+        # Medium problems (10K - 100K rows)
+        ("https://plato.asu.edu/ftp/lptestset/a2864.mps.bz2", "a2864.mps.bz2", "a2864", 22117, 200787, 20078717),
+        ("https://plato.asu.edu/ftp/lptestset/ex10.mps.bz2", "ex10.mps.bz2", "ex10", 69609, 17680, 1179680),
+        ("https://plato.asu.edu/ftp/lptestset/s82.mps.bz2", "s82.mps.bz2", "s82", 87878, 1690631, 7022608),
 
-        # Large problems
-        ("https://plato.asu.edu/ftp/lptestset/L1_sixm250obs.mps.bz2", "L1_sixm250obs.mps.bz2", "L1_sixm250obs", 986069, 428032, 4280320),
+        # Large problems (100K - 1M rows)
+        ("https://plato.asu.edu/ftp/lptestset/neos-3025225.mps.bz2", "neos-3025225.mps.bz2", "neos-3025225", 91572, 69846, 9357951),
+        ("https://plato.asu.edu/ftp/lptestset/rmine15.mps.bz2", "rmine15.mps.bz2", "rmine15", 358395, 42438, 879732),
+
+        # Very large problems (> 1M rows)
         ("https://plato.asu.edu/ftp/lptestset/dlr1.mps.bz2", "dlr1.mps.bz2", "dlr1", 1735470, 9121907, 18365107),
     ]
 
