@@ -11,7 +11,7 @@ def solve(
     primal_weight_update_smoothing: float = 0.5,
     ruiz_iterations: int = 10,
     pock_chambolle_alpha: float = 1.0,
-    eps_tol: float = 1e-6,
+    eps_tol: float = 1e-4,
     eps_primal_infeasible: float = 1e-8,
     eps_dual_infeasible: float = 1e-8,
     verbose: bool = False,
