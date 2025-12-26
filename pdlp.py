@@ -226,11 +226,9 @@ def solve(
         dx = torch.linalg.norm(x_new - x_old)
         dy = torch.linalg.norm(y_new - y_old)
 
-        if (dx > eps_zero) and (dy > eps_zero):
-            ratio = (dy / dx).clamp_min(eps_zero)
+        if dx > eps_zero and dy > eps_zero:
             # exponential moving average: w_new = ratio^alpha * w_old^(1-alpha)
-            w_new = (ratio ** primal_weight_update_smoothing) * (w_old ** (1.0 - primal_weight_update_smoothing))
-            return w_new.clamp_min(eps_zero)
+            return = ((dy / dx) ** primal_weight_update_smoothing) * (w_old ** (1.0 - primal_weight_update_smoothing))
         return w_old
 
     @torch.no_grad()
