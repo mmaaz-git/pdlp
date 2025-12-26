@@ -28,5 +28,8 @@ Notes:
 - missing log in the primal weight update in the paper
 - PC scaling
     - had to dig and find the paper...
-- missing absolute value!
+- missing absolute value in equation (4)
+
+TODO:
+- match order of h - GX in kkt function
 
