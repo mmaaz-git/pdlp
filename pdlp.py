@@ -73,7 +73,6 @@ def solve(
     termination_check_frequency = 50 # how frequently to check for termination
     max_inner_iters = 1000 # max iterations between restarts
     max_backtrack = 50 # max backtracking steps in adaptive step size
-    max_step_size = 1e6 # maximum step size to prevent divergence
 
     start_time = time.time()
 
@@ -414,14 +413,13 @@ def solve(
             num = w * (dx @ dx) + (dy @ dy) / w
             denom = 2 * torch.abs(dy @ K @ dx)
 
-            # Compute bar_eta with upper bound to prevent divergence
+            # Compute bar_eta (step_size_limit = movement / interaction)
             if denom <= eps_zero:
-                bar_eta = torch.as_tensor(max_step_size, device=dx.device, dtype=dx.dtype)
+                bar_eta = torch.tensor(float("inf"), device=dx.device, dtype=dx.dtype)
             else:
-                bar_eta_value = num / denom
-                bar_eta = torch.clamp(bar_eta_value, max=max_step_size)
+                bar_eta = num / denom
 
-            eta_p = torch.minimum(fac1 * bar_eta, fac2 * eta).clamp_min(eps_zero).clamp_max(max_step_size)
+            eta_p = torch.minimum(fac1 * bar_eta, fac2 * eta).clamp_min(eps_zero)
 
             if eta <= bar_eta:
                 return x_p, y_p, eta, eta_p
@@ -445,7 +443,8 @@ def solve(
     eta_hat = (1.0 / row_sums.max().clamp_min(eps_zero)).to(device=device, dtype=dtype)
 
     # initial weight
-    w = (torch.linalg.norm(c) / torch.linalg.norm(q).clamp_min(eps_zero)).clamp_min(eps_zero)
+    c_norm, q_norm = torch.linalg.norm(c), torch.linalg.norm(q)
+    w = c / q if c_norm > eps_zero and q_norm > eps_zero else 1
 
     x, y = x0.clone(), y0.clone() # current iterate
     x_prev, y_prev = x.clone(), y.clone() # past iterate
