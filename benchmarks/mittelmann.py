@@ -114,7 +114,7 @@ def benchmark_mps(mps_file, device='cuda', time_limit=600, use_sparse=True):
         iteration_limit=float('inf'),
         time_sec_limit=time_limit,
         eps_tol=1e-4,
-        verbose=True
+        verbose=False
     )
 
     if device == 'cuda':
