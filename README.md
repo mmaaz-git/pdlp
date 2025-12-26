@@ -19,3 +19,14 @@ Medium-Sparse        Sparse     111.592      41.982       2.66        x
 Large-Sparse         Sparse     N/A          82.648       N/A
 Very Large-Sparse    Sparse     N/A          600.025      N/A
 ```
+
+
+
+Notes:
+- divergence is a major problem.
+    - CC saying its bc Julia uses averages?
+- missing log in the primal weight update in the paper
+- PC scaling
+    - had to dig and find the paper...
+- missing absolute value!
+
