@@ -254,9 +254,10 @@ def solve(
         return (values[finite] * multipliers[finite]).sum() if finite.any() else torch.tensor(0.0, device=values.device, dtype=values.dtype)
 
     @torch.no_grad()
-    def compute_dual_objective(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    def compute_dual_objective(x: torch.Tensor, y: torch.Tensor, KTy_orig: torch.Tensor | None = None) -> torch.Tensor:
         """Computes dual objective q^T y + l^T λ+ - u^T λ- for the original (unscaled) problem."""
-        g = c_orig - (K_orig.T @ y)
+        if KTy_orig is None: KTy_orig = K_orig.T @ y
+        g = c_orig - KTy_orig
         lam = compute_lambda_for_box(x, g, l_orig, u_orig)
         lam_pos = torch.clamp(lam, min=0.0)
         lam_neg = torch.clamp(-lam, min=0.0)
@@ -267,17 +268,27 @@ def solve(
         return q_orig @ y + l_term - u_term
 
     @torch.no_grad()
-    def kkt_error_sq(x: torch.Tensor, y: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+    def kkt_error_sq(
+        x: torch.Tensor,
+        y: torch.Tensor,
+        w: torch.Tensor,
+        Gx: torch.Tensor | None = None, # cached G @ x
+        Ax: torch.Tensor | None = None, # cached A @
+        KTy: torch.Tensor | None = None, # cached K.T @ y
+    ) -> torch.Tensor:
         """Equation (5) in the paper."""
         w = torch.as_tensor(w, device=x.device, dtype=x.dtype).clamp_min(eps_zero)
 
         # primal residuals
-        r_eq = b - (A @ x)
-        r_ineq = torch.clamp(h - (G @ x), min=0.0)
+        if Gx is None: Gx = G @ x
+        if Ax is None: Ax = A @ x
+        r_eq = b - Ax
+        r_ineq = torch.clamp(h - Gx, min=0.0)
         term1 = (w**2) * (r_eq @ r_eq + r_ineq @ r_ineq)
 
         # stationarity residual + box multipliers
-        g = c - (K.T @ y)
+        if KTy is None: KTy = K.T @ y
+        g = c - KTy
         lam = compute_lambda_for_box(x, g, l, u)
         rs = g - lam
         term2 = (1.0 / (w**2)) * (rs @ rs)
@@ -295,7 +306,13 @@ def solve(
         return term1 + term2 + term3
 
     @torch.no_grad()
-    def termination_criteria(x_scaled: torch.Tensor, y_scaled: torch.Tensor) -> tuple[str, dict]:
+    def termination_criteria(
+        x_scaled: torch.Tensor,
+        y_scaled: torch.Tensor,
+        G_orig_x: torch.Tensor | None = None, # cached G_orig @ x
+        A_orig_x: torch.Tensor | None = None, # cached A_orig @ x
+        KT_orig_y: torch.Tensor | None = None, # cached K_orig.T @ x
+    ) -> tuple[str, dict]:
         """
         Check termination on original problem. Returns (status, info)
         where status is '' if continuing, 'optimal', 'primal_infeasible', or 'dual_infeasible' if done.
@@ -336,8 +353,8 @@ def solve(
                         "max_primal_residual": max_primal_residual,
                     }
 
-        # Check for optimality
-        dual_obj = compute_dual_objective(x_unscaled, y_unscaled)
+        if KT_orig_y is None: KT_orig_y = K_orig.T @ y_unscaled
+        dual_obj = compute_dual_objective(x_unscaled, y_unscaled, KTy_orig=KT_orig_y)
         primal_obj = c_orig @ x_unscaled
 
         # condition (1): relative duality gap: |primal_obj - dual_obj| / (1 + |primal_obj| + |dual_obj|)
@@ -346,13 +363,15 @@ def solve(
         gap_ok = gap_num <= eps_tol * (1.0 + torch.abs(dual_obj) + torch.abs(primal_obj))
 
         # condition (2): primal feasibility
-        r_eq = b_orig - (A_orig @ x_unscaled)
-        r_ineq = torch.clamp(h_orig - (G_orig @ x_unscaled), min=0.0)
+        if G_orig_x is None: G_orig_x = G_orig @ x_unscaled
+        if A_orig_x is None: A_orig_x = A_orig @ x_unscaled
+        r_eq = b_orig - A_orig_x
+        r_ineq = torch.clamp(h_orig - G_orig_x, min=0.0)
         feas = torch.sqrt((r_eq @ r_eq) + (r_ineq @ r_ineq))
         feas_ok = feas <= eps_tol * (1.0 + torch.linalg.norm(q_orig))
 
-        # condition (3): stationarity (dual feasibility)
-        g_orig = c_orig - (K_orig.T @ y_unscaled)
+        # condition (3): stationarity (dual feasibility) - reuse KT_orig_y
+        g_orig = c_orig - KT_orig_y
         lam = compute_lambda_for_box(x_unscaled, g_orig, l_orig, u_orig)
         stat = torch.linalg.norm(g_orig - lam)
         stat_ok = stat <= eps_tol * (1.0 + torch.linalg.norm(c_orig))
@@ -468,13 +487,26 @@ def solve(
 
             # check termination and restart: first 10 iters, then every frequency
             if n_iterations <= 10 or n_iterations % termination_check_frequency == 0:
-                # choose restart candidate: choose one with lower KKT
-                kkt_current = kkt_error_sq(x, y, w)
-                kkt_averaged = kkt_error_sq(x_bar, y_bar, w)
+                # precompute and cache needed matrix products
+                Gx = G @ x
+                Ax = A @ x
+                KTy = K.T @ y
+                x_unscaled = x / variable_rescaling
+                y_unscaled = y / constraint_rescaling
+                G_orig_x = G_orig @ x_unscaled
+                A_orig_x = A_orig @ x_unscaled
+                KT_orig_y = K_orig.T @ y_unscaled
+                Gx_bar = G @ x_bar
+                Ax_bar = A @ x_bar
+                KTy_bar = K.T @ y_bar
+
+                # Choose restart candidate: choose one with lower KKT
+                kkt_current = kkt_error_sq(x, y, w, Gx=Gx, Ax=Ax, KTy=KTy)
+                kkt_averaged = kkt_error_sq(x_bar, y_bar, w, Gx=Gx_bar, Ax=Ax_bar, KTy=KTy_bar)
                 x_c_new, y_c_new = (x, y) if (kkt_current < kkt_averaged) else (x_bar, y_bar)
                 kkt_c_new = kkt_current if (kkt_current < kkt_averaged) else kkt_averaged
 
-                status, info = termination_criteria(x, y)
+                status, info = termination_criteria(x, y, G_orig_x=G_orig_x, A_orig_x=A_orig_x, KT_orig_y=KT_orig_y)
                 if verbose:
                     print(f"  Iter {n_iterations:5d}: primal_obj = {info['primal_obj']:+.6e}, dual_obj = {info['dual_obj']:+.6e}, gap = {abs(info['primal_obj'] - info['dual_obj']):.3e}, KKT = {torch.sqrt(kkt_current).item():.3e}")
                 if status:
