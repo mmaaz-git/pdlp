@@ -1,0 +1,494 @@
+================================================================================
+MPS BENCHMARK - Mittelmann LP Problems
+================================================================================
+✓ CUDA available: NVIDIA A100-SXM4-80GB
+
+Available benchmarks:
+  1. qap15                    6,331 rows ×    22,275 cols ×     110,700 nnz
+  2. a2864                   22,117 rows ×   200,787 cols ×  20,078,717 nnz
+  3. ex10                    69,609 rows ×    17,680 cols ×   1,179,680 nnz
+  4. s82                     87,878 rows × 1,690,631 cols ×   7,022,608 nnz
+  5. neos-3025225            91,572 rows ×    69,846 cols ×   9,357,951 nnz
+  6. rmine15                358,395 rows ×    42,438 cols ×     879,732 nnz
+  7. dlr1                 1,735,470 rows × 9,121,907 cols ×  18,365,107 nnz
+✓ qap15.mps.bz2 already exists
+✓ qap15.mps already exists
+
+================================================================================
+BENCHMARK: qap15.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 6330 constraints, 22275 variables...
+Sparsity: 0 + 94,950 = 94,950 nonzeros
+Density: 0.0673% (sparsity: 99.9327%)
+Load time: 0.41s
+
+Problem size:
+  Variables: 22,275
+  Inequality constraints: 0
+  Equality constraints: 6,330
+  Total constraints: 6,330
+  Nonzeros: 94,950
+  Density: 0.0673%
+
+--------------------------------------------------------------------------------
+SOLVING ON CUDA
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 10.20s (0.2 min)
+Iterations: 4300
+Primal objective: 1.040995e+03
+Dual objective: 1.040995e+03
+Duality gap: 4.882812e-04
+Relative gap: 2.344137e-07
+
+================================================================================
+BENCHMARK: qap15.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 6330 constraints, 22275 variables...
+Sparsity: 0 + 94,950 = 94,950 nonzeros
+Density: 0.0673% (sparsity: 99.9327%)
+Load time: 0.40s
+
+Problem size:
+  Variables: 22,275
+  Inequality constraints: 0
+  Equality constraints: 6,330
+  Total constraints: 6,330
+  Nonzeros: 94,950
+  Density: 0.0673%
+
+--------------------------------------------------------------------------------
+SOLVING ON CPU
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 71.97s (1.2 min)
+Iterations: 4950
+Primal objective: 1.040989e+03
+Dual objective: 1.040995e+03
+Duality gap: 5.981445e-03
+Relative gap: 2.871575e-06
+✓ a2864.mps.bz2 already exists
+✓ a2864.mps already exists
+
+================================================================================
+BENCHMARK: a2864.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 22117 constraints, 200787 variables...
+Sparsity: 20,078,700 + 17 = 20,078,717 nonzeros
+Density: 0.4521% (sparsity: 99.5479%)
+Load time: 68.76s
+
+Problem size:
+  Variables: 200,787
+  Inequality constraints: 22,100
+  Equality constraints: 17
+  Total constraints: 22,117
+  Nonzeros: 20,078,717
+  Density: 0.4521%
+
+--------------------------------------------------------------------------------
+SOLVING ON CUDA
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 37.15s (0.6 min)
+Iterations: 600
+Primal objective: -2.829594e+02
+Dual objective: -2.829877e+02
+Duality gap: 2.825928e-02
+Relative gap: 4.984465e-05
+
+================================================================================
+BENCHMARK: a2864.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 22117 constraints, 200787 variables...
+Sparsity: 20,078,700 + 17 = 20,078,717 nonzeros
+Density: 0.4521% (sparsity: 99.5479%)
+Load time: 69.31s
+
+Problem size:
+  Variables: 200,787
+  Inequality constraints: 22,100
+  Equality constraints: 17
+  Total constraints: 22,117
+  Nonzeros: 20,078,717
+  Density: 0.4521%
+
+--------------------------------------------------------------------------------
+SOLVING ON CPU
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 2884.04s (48.1 min)
+Iterations: 900
+Primal objective: -2.829501e+02
+Dual objective: -2.829702e+02
+Duality gap: 2.001953e-02
+Relative gap: 3.531278e-05
+✓ ex10.mps.bz2 already exists
+✓ ex10.mps already exists
+
+================================================================================
+BENCHMARK: ex10.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 69608 constraints, 17680 variables...
+Sparsity: 1,126,640 + 35,360 = 1,162,000 nonzeros
+Density: 0.0944% (sparsity: 99.9056%)
+Load time: 4.05s
+
+Problem size:
+  Variables: 17,680
+  Inequality constraints: 69,408
+  Equality constraints: 200
+  Total constraints: 69,608
+  Nonzeros: 1,162,000
+  Density: 0.0944%
+
+--------------------------------------------------------------------------------
+SOLVING ON CUDA
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 1.88s (0.0 min)
+Iterations: 400
+Primal objective: 1.000000e+02
+Dual objective: 1.000000e+02
+Duality gap: 2.288818e-05
+Relative gap: 1.138715e-07
+
+================================================================================
+BENCHMARK: ex10.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 69608 constraints, 17680 variables...
+Sparsity: 1,126,640 + 35,360 = 1,162,000 nonzeros
+Density: 0.0944% (sparsity: 99.9056%)
+Load time: 4.11s
+
+Problem size:
+  Variables: 17,680
+  Inequality constraints: 69,408
+  Equality constraints: 200
+  Total constraints: 69,608
+  Nonzeros: 1,162,000
+  Density: 0.0944%
+
+--------------------------------------------------------------------------------
+SOLVING ON CPU
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 73.35s (1.2 min)
+Iterations: 400
+Primal objective: 1.000000e+02
+Dual objective: 1.000000e+02
+Duality gap: 1.525879e-05
+Relative gap: 7.591435e-08
+✓ s82.mps.bz2 already exists
+✓ s82.mps already exists
+
+================================================================================
+BENCHMARK: s82.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 87878 constraints, 1690631 variables...
+Sparsity: 3,641,538 + 3,381,070 = 7,022,608 nonzeros
+Density: 0.0047% (sparsity: 99.9953%)
+Load time: 55.97s
+
+Problem size:
+  Variables: 1,690,631
+  Inequality constraints: 273
+  Equality constraints: 87,605
+  Total constraints: 87,878
+  Nonzeros: 7,022,608
+  Density: 0.0047%
+
+--------------------------------------------------------------------------------
+SOLVING ON CUDA
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: time_limit
+Solve time: 3600.55s (60.0 min)
+Iterations: 42974
+Primal objective: nan
+Dual objective: nan
+Duality gap: nan
+Relative gap: nan
+
+================================================================================
+BENCHMARK: s82.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 87878 constraints, 1690631 variables...
+Sparsity: 3,641,538 + 3,381,070 = 7,022,608 nonzeros
+Density: 0.0047% (sparsity: 99.9953%)
+Load time: 56.19s
+
+Problem size:
+  Variables: 1,690,631
+  Inequality constraints: 273
+  Equality constraints: 87,605
+  Total constraints: 87,878
+  Nonzeros: 7,022,608
+  Density: 0.0047%
+
+--------------------------------------------------------------------------------
+SOLVING ON CPU
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: time_limit
+Solve time: 3601.68s (60.0 min)
+Iterations: 3310
+Primal objective: -3.487681e+01
+Dual objective: -3.600000e+01
+Duality gap: 1.123188e+00
+Relative gap: 1.562657e-02
+✓ neos-3025225.mps.bz2 already exists
+✓ neos-3025225.mps already exists
+
+================================================================================
+BENCHMARK: neos-3025225.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 91572 constraints, 69846 variables...
+Sparsity: 9,288,106 + 69,845 = 9,357,951 nonzeros
+Density: 0.1463% (sparsity: 99.8537%)
+Load time: 24.97s
+
+Problem size:
+  Variables: 69,846
+  Inequality constraints: 91,571
+  Equality constraints: 1
+  Total constraints: 91,572
+  Nonzeros: 9,357,951
+  Density: 0.1463%
+
+--------------------------------------------------------------------------------
+SOLVING ON CUDA
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 137.18s (2.3 min)
+Iterations: 5150
+Primal objective: 5.257386e-02
+Dual objective: 5.263905e-02
+Duality gap: 6.518885e-05
+Relative gap: 5.898307e-05
+
+================================================================================
+BENCHMARK: neos-3025225.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 91572 constraints, 69846 variables...
+Sparsity: 9,288,106 + 69,845 = 9,357,951 nonzeros
+Density: 0.1463% (sparsity: 99.8537%)
+Load time: 24.29s
+
+Problem size:
+  Variables: 69,846
+  Inequality constraints: 91,571
+  Equality constraints: 1
+  Total constraints: 91,572
+  Nonzeros: 9,357,951
+  Density: 0.1463%
+
+--------------------------------------------------------------------------------
+SOLVING ON CPU
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: time_limit
+Solve time: 3602.36s (60.0 min)
+Iterations: 2531
+Primal objective: 4.747069e-02
+Dual objective: 4.919147e-02
+Duality gap: 1.720786e-03
+Relative gap: 1.569112e-03
+Downloading https://plato.asu.edu/ftp/lptestset/rmine15.mps.bz2...
+✓ Downloaded to rmine15.mps.bz2
+Decompressing rmine15.mps.bz2...
+✓ Decompressed to rmine15.mps
+
+================================================================================
+BENCHMARK: rmine15.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 358395 constraints, 42438 variables...
+Sparsity: 879,732 + 0 = 879,732 nonzeros
+Density: 0.0058% (sparsity: 99.9942%)
+Load time: 6.04s
+
+Problem size:
+  Variables: 42,438
+  Inequality constraints: 358,395
+  Equality constraints: 0
+  Total constraints: 358,395
+  Nonzeros: 879,732
+  Density: 0.0058%
+
+--------------------------------------------------------------------------------
+SOLVING ON CUDA
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 57.69s (1.0 min)
+Iterations: 17600
+Primal objective: -5.042599e+03
+Dual objective: -5.042506e+03
+Duality gap: 9.228516e-02
+Relative gap: 9.149732e-06
+
+================================================================================
+BENCHMARK: rmine15.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 358395 constraints, 42438 variables...
+Sparsity: 879,732 + 0 = 879,732 nonzeros
+Density: 0.0058% (sparsity: 99.9942%)
+Load time: 6.01s
+
+Problem size:
+  Variables: 42,438
+  Inequality constraints: 358,395
+  Equality constraints: 0
+  Total constraints: 358,395
+  Nonzeros: 879,732
+  Density: 0.0058%
+
+--------------------------------------------------------------------------------
+SOLVING ON CPU
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: optimal
+Solve time: 2396.96s (39.9 min)
+Iterations: 18850
+Primal objective: -5.042684e+03
+Dual objective: -5.042492e+03
+Duality gap: 1.914062e-01
+Relative gap: 1.897709e-05
+✓ dlr1.mps.bz2 already exists
+✓ dlr1.mps already exists
+
+================================================================================
+BENCHMARK: dlr1.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 1735470 constraints, 9142907 variables...
+Sparsity: 2,107,420 + 16,257,687 = 18,365,107 nonzeros
+Density: 0.0001% (sparsity: 99.9999%)
+Load time: 68.34s
+
+Problem size:
+  Variables: 9,142,907
+  Inequality constraints: 768,063
+  Equality constraints: 967,407
+  Total constraints: 1,735,470
+  Nonzeros: 18,365,107
+  Density: 0.0001%
+
+--------------------------------------------------------------------------------
+SOLVING ON CUDA
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
+
+================================================================================
+RESULTS
+================================================================================
+Status: time_limit
+Solve time: 3601.19s (60.0 min)
+Iterations: 25060
+Primal objective: nan
+Dual objective: nan
+Duality gap: nan
+Relative gap: nan
+
+================================================================================
+BENCHMARK: dlr1.mps
+================================================================================
+
+Loading MPS file (sparse=True)...
+Building tensors: 1735470 constraints, 9142907 variables...
+Sparsity: 2,107,420 + 16,257,687 = 18,365,107 nonzeros
+Density: 0.0001% (sparsity: 99.9999%)
+Load time: 68.75s
+
+Problem size:
+  Variables: 9,142,907
+  Inequality constraints: 768,063
+  Equality constraints: 967,407
+  Total constraints: 1,735,470
+  Nonzeros: 18,365,107
+  Density: 0.0001%
+
+--------------------------------------------------------------------------------
+SOLVING ON CPU
+Time limit: 3600s (60 min)
+--------------------------------------------------------------------------------
