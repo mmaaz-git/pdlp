@@ -72,7 +72,6 @@ def solve(
     eps_zero = 1e-12
     termination_check_frequency = 50 # how frequently to check for termination
     max_inner_iters = 1000 # max iterations between restarts
-    max_backtrack = 50 # max backtracking steps in adaptive step size
 
     start_time = time.time()
 
@@ -401,7 +400,7 @@ def solve(
         fac1 = 1.0 if k == 0 else 1.0 - (kp1 ** -0.3)
         fac2 = 1.0 + (kp1 ** -0.6)
 
-        for _ in range(max_backtrack):
+        while True:
             x_p = proj_X(x - (eta / w) * (c - K.T @ y))
             y_p = proj_Y(y + (eta * w) * (q - K @ (2.0 * x_p - x)))
 
@@ -419,11 +418,8 @@ def solve(
 
             eta_p = torch.minimum(fac1 * bar_eta, fac2 * eta).clamp_min(eps_zero)
 
-            if eta <= bar_eta:
-                return x_p, y_p, eta, eta_p
-            eta = eta_p
-
-        return x_p, y_p, eta, eta_p
+            if eta <= bar_eta: return x_p, y_p, eta, eta_p
+            else: eta = eta_p
 
     # -----------------------------
     # Main Algorithm
