@@ -232,7 +232,7 @@ def solve(
 
     @torch.no_grad()
     def compute_lambda_for_box(x: torch.Tensor, g: torch.Tensor, lower: torch.Tensor, upper: torch.Tensor) -> torch.Tensor:
-        """Computes lambda, the normal-cone component for box constraints at x."""
+        """Computes lambda, the normal-cone component for box constraints at x. g = c - KTy"""
         lam = torch.zeros_like(x)
         at_l = torch.isfinite(lower) & (x <= lower + eps_tol)
         at_u = torch.isfinite(upper) & (x >= upper - eps_tol)
