@@ -2,7 +2,7 @@
 
 A variant of PDHG (primal-dual hybrid gradient) for linear programming. It tries to leverage matrix operations as much as possible so that we can gain speedups from the GPU. It closely follows the papers https://arxiv.org/pdf/2311.12180 and https://arxiv.org/abs/2106.04756.
 
-The code is meant to have a "linear flow" as much as possible, so that steps are "in line" as much as possible so the reader can see what is going on and easily map it to the math. The entire implementation is less than 600 lines (and honestly, ~350 lines of real code, i.e., not logging or docstrings, etc.), entirely in one function `solve()` in `pdlp.py`.
+The code is meant to have a "linear flow" as much as possible, so that steps are "in line" as much as possible so the reader can see what is going on and easily map it to the math. The entire implementation is less than 600 lines (and honestly, ~250 lines of real code, i.e., not logging or docstrings, etc.), entirely in one function `solve()` in `pdlp.py`.
 
 It supports both dense and sparse matrices, and can be used on a CPU or GPU. Just ensure your problem data is on the right device or the right format, and then PyTorch will handle the rest.
 
