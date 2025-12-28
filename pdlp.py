@@ -499,8 +499,7 @@ def solve(
                 # Choose restart candidate: choose one with lower KKT
                 kkt_current = kkt_error_sq(x, y, w, Gx=Gx, Ax=Ax, KTy=KTy)
                 kkt_averaged = kkt_error_sq(x_bar, y_bar, w, Gx=Gx_bar, Ax=Ax_bar, KTy=KTy_bar)
-                x_c_new, y_c_new = (x, y) if (kkt_current < kkt_averaged) else (x_bar, y_bar)
-                kkt_c_new = kkt_current if (kkt_current < kkt_averaged) else kkt_averaged
+                x_c_new, y_c_new, kkt_c_new = (x, y, kkt_current) if (kkt_current < kkt_averaged) else (x_bar, y_bar, kkt_averaged)
 
                 status, info = termination_criteria(x_unscaled, y_unscaled, G_orig_x=G_orig_x, A_orig_x=A_orig_x, KT_orig_y=KT_orig_y)
                 if verbose:
