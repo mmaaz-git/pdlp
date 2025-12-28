@@ -316,7 +316,7 @@ def solve(
         """
         # compute objectives early so they're available in all return paths
         if KT_orig_y is None: KT_orig_y = K_orig.T @ y_unscaled
-        dual_obj = compute_dual_objective(x_unscaled, y_unscaled)
+        dual_obj = compute_dual_objective(x_unscaled, y_unscaled, KTy_orig=KT_orig_y)
         primal_obj = c_orig @ x_unscaled
 
         # Check for primal infeasibility (Farkas certificate via dual ray)
