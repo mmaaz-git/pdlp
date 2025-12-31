@@ -28,6 +28,8 @@ from collections import defaultdict
 
 from pdlp import solve
 
+torch.set_default_dtype(torch.float64)
+
 
 def parse_mps(filename, sparse=True):
     """Parse MPS file and return LP in our format.
